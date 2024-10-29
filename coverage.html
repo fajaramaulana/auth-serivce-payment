@@ -1,0 +1,710 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>auth: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/fajaramaulana/auth-serivce-payment/cmd/auth/main.go (82.1%)</option>
+				
+				<option value="file1">github.com/fajaramaulana/auth-serivce-payment/cmd/auth/mocks/mock_config.go (0.0%)</option>
+				
+				<option value="file2">github.com/fajaramaulana/auth-serivce-payment/cmd/auth/mocks/mock_database.go (0.0%)</option>
+				
+				<option value="file3">github.com/fajaramaulana/auth-serivce-payment/internal/config/config.go (0.0%)</option>
+				
+				<option value="file4">github.com/fajaramaulana/auth-serivce-payment/internal/config/mysql.go (0.0%)</option>
+				
+				<option value="file5">github.com/fajaramaulana/auth-serivce-payment/internal/repository/auth_repository_impl.go (2.2%)</option>
+				
+				<option value="file6">github.com/fajaramaulana/auth-serivce-payment/internal/service/auth_service_impl.go (1.2%)</option>
+				
+				<option value="file7">github.com/fajaramaulana/auth-serivce-payment/internal/utils/token.go (0.0%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package main
+
+import (
+        "database/sql"
+        "fmt"
+        "net"
+        "os"
+
+        "github.com/fajaramaulana/auth-serivce-payment/internal/config"
+        "github.com/fajaramaulana/auth-serivce-payment/internal/repository"
+        "github.com/fajaramaulana/auth-serivce-payment/internal/service"
+        "github.com/fajaramaulana/shared-proto-payment/proto/auth"
+        "github.com/sirupsen/logrus"
+        "google.golang.org/grpc"
+        "google.golang.org/grpc/reflection"
+)
+
+var ListenerFunc = func() (net.Listener, error) <span class="cov0" title="0">{
+        return net.Listen("tcp", ":50051")
+}</span>
+
+func init() <span class="cov8" title="1">{
+        // Initialize Logrus logger
+        log := logrus.New()
+        log.Out = os.Stdout
+        log.SetFormatter(&amp;logrus.JSONFormatter{}) // Optional: set JSON formatting for structured logs
+}</span>
+
+func SetupServer(configuration config.Config, db *sql.DB, ListenerFunc func() (net.Listener, error)) (*grpc.Server, net.Listener, error) <span class="cov8" title="1">{
+        // Initialize repository and service handler
+        authRepo := repository.NewUserRepository(db)
+        authService := service.NewAuthService(authRepo, configuration)
+
+        // Initialize gRPC server
+        grpcServer := grpc.NewServer()
+        auth.RegisterAuthServiceServer(grpcServer, authService) // Pass authService directly
+
+        // Register reflection service on gRPC server
+        reflection.Register(grpcServer)
+
+        // Set up listener
+        listener, err := ListenerFunc()
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, nil, err
+        }</span>
+
+        <span class="cov8" title="1">return grpcServer, listener, nil</span>
+}
+
+func main() <span class="cov0" title="0">{
+        configuration := config.LoadConfiguration()
+        logrus.Infof("Configuration loaded")
+        if err := run(configuration, config.ConnectDBMysql, ListenerFunc); err != nil </span><span class="cov0" title="0">{
+                logrus.Fatalf("Application failed: %v", err)
+        }</span>
+}
+
+func run(config config.Config, connectDB func(config.Config) (*sql.DB, error), createListener func() (net.Listener, error)) error <span class="cov8" title="1">{
+        // Attempt to connect to the database
+        db, err := connectDB(config)
+        if err != nil </span><span class="cov8" title="1">{
+                return fmt.Errorf("failed to connect to database: %w", err)
+        }</span>
+
+        // Ensure db is closed only if it’s initialized
+        <span class="cov8" title="1">defer func() </span><span class="cov8" title="1">{
+                if db != nil </span><span class="cov8" title="1">{
+                        db.Close()
+                }</span>
+        }()
+
+        // Attempt to create the listener
+        <span class="cov8" title="1">listener, err := createListener()
+        if err != nil </span><span class="cov8" title="1">{
+                return fmt.Errorf("failed to create listener: %w", err)
+        }</span>
+        <span class="cov8" title="1">defer listener.Close()
+
+        // Continue with the rest of the function logic...
+        return nil</span>
+}
+
+/* func main() {
+        configuration := config.LoadConfiguration()
+        logrus.Infof("Configuration loaded")
+        logrus.Info("Value of key 'DB_HOST':", configuration.Get("DB_HOST"))
+
+        db, err := config.ConnectDBMysql(configuration)
+        if err != nil {
+                logrus.Fatalf("Failed to connect to database: %v", err)
+        }
+        defer db.Close()
+
+        grpcServer, listener, err := SetupServer(configuration, db, ListenerFunc)
+        if err != nil {
+                logrus.Fatalf("Failed to set up server: %v", err)
+        }
+
+        logrus.Infof("gRPC server listening on port 50051")
+        if err := grpcServer.Serve(listener); err != nil {
+                logrus.Fatalf("Failed to serve gRPC server: %v", err)
+        }
+} */
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package mocks
+
+import "github.com/stretchr/testify/mock"
+
+// MockConfig is a mock struct for config.Config
+type MockConfig struct {
+        mock.Mock
+}
+
+// Get is a mock method for config.Config's Get method
+func (m *MockConfig) Get(key string) string <span class="cov0" title="0">{
+        args := m.Called(key)
+        return args.String(0)
+}</span>
+
+func (m *MockConfig) Set(key, value string) <span class="cov0" title="0">{
+        m.Called(key, value)
+}</span>
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package mocks
+
+import "github.com/stretchr/testify/mock"
+
+// MockDatabase is a mock implementation of the Database interface for testing.
+type MockDatabase struct {
+        mock.Mock
+}
+
+func (m *MockDatabase) Close() error <span class="cov0" title="0">{
+        args := m.Called()
+        return args.Error(0)
+}</span>
+</pre>
+		
+		<pre class="file" id="file3" style="display: none">package config
+
+import (
+        "fmt"
+        "log"
+        "os"
+        "path/filepath"
+
+        "github.com/joho/godotenv"
+)
+
+type Config interface {
+        Get(key string) string
+        Set(key string, value string)
+}
+
+type configImpl struct {
+}
+
+func (config *configImpl) Get(key string) string <span class="cov0" title="0">{
+        return os.Getenv(key)
+}</span>
+
+func (config *configImpl) Set(key string, value string) <span class="cov0" title="0">{
+        os.Setenv(key, value)
+}</span>
+
+func New(filenames string) Config <span class="cov0" title="0">{
+        fmt.Println("Loading .env file from:", filenames)
+        if err := godotenv.Load(filenames); err != nil </span><span class="cov0" title="0">{
+                log.Fatalf("Error loading .env file, %v", err)
+        }</span>
+        // Initialize your configuration fields from os.Getenv()
+        <span class="cov0" title="0">return &amp;configImpl{}</span>
+}
+
+func LoadConfiguration() Config <span class="cov0" title="0">{
+        wd, err := os.Getwd()
+        if err != nil </span><span class="cov0" title="0">{
+                log.Fatalf("Error getting working directory: %v", err)
+        }</span>
+
+        // Construct the path to the .env file
+        <span class="cov0" title="0">envPath := filepath.Join(wd, "../../", ".env")
+        configuration := New(envPath)
+
+        return configuration</span>
+}
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">package config
+
+import (
+        "database/sql"
+        "fmt"
+        "strconv"
+
+        _ "github.com/go-sql-driver/mysql"
+)
+
+func ConnectDBMysql(config Config) (*sql.DB, error) <span class="cov0" title="0">{
+        // Construct the DSN
+        dbUser := config.Get("DB_USER")
+        dbPassword := config.Get("DB_PASSWORD")
+        dbHost := config.Get("DB_HOST")
+        dbPort := config.Get("DB_PORT")
+        dbType := config.Get("DB_TYPE")
+        port, err := strconv.Atoi(dbPort)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">dbName := config.Get("DB_NAME")
+        dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&amp;parseTime=True&amp;loc=Local",
+                dbUser, dbPassword, dbHost, port, dbName)
+        db, err := sql.Open(dbType, dsn)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov0" title="0">return db, nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file5" style="display: none">package repository
+
+import (
+        "database/sql"
+
+        "github.com/fajaramaulana/auth-serivce-payment/internal/model"
+)
+
+type UserRepositoryImpl struct {
+        db *sql.DB
+}
+
+func NewUserRepository(db *sql.DB) UserRepository <span class="cov8" title="1">{
+        return &amp;UserRepositoryImpl{db: db}
+}</span>
+
+func (r *UserRepositoryImpl) FindUserByUsername(username string) (*model.GetUserPassword, error) <span class="cov0" title="0">{
+        var user model.GetUserPassword
+        query := "SELECT id, username, email, password FROM users WHERE username = ?"
+        row := r.db.QueryRow(query, username)
+
+        if err := row.Scan(&amp;user.ID, &amp;user.Username, &amp;user.Email, &amp;user.Password); err != nil </span><span class="cov0" title="0">{
+                if err == sql.ErrNoRows </span><span class="cov0" title="0">{
+                        return nil, nil // User not found
+                }</span>
+                <span class="cov0" title="0">return nil, err</span> // Other error
+        }
+        <span class="cov0" title="0">return &amp;user, nil</span>
+}
+
+// FindUserByEmail retrieves a user by their email
+func (r *UserRepositoryImpl) FindUserByEmail(email string) (*model.GetUserPassword, error) <span class="cov0" title="0">{
+        var user model.GetUserPassword
+        query := "SELECT id, username, email, password FROM users WHERE email = ?"
+        row := r.db.QueryRow(query, email)
+
+        if err := row.Scan(&amp;user.ID, &amp;user.Username, &amp;user.Email, &amp;user.Password); err != nil </span><span class="cov0" title="0">{
+                if err == sql.ErrNoRows </span><span class="cov0" title="0">{
+                        return nil, nil // User not found
+                }</span>
+                <span class="cov0" title="0">return nil, err</span> // Other error
+        }
+        <span class="cov0" title="0">return &amp;user, nil</span>
+}
+
+// CheckUserByEmailRegister checks if a user with the given email already exists
+func (r *UserRepositoryImpl) CheckUserByEmailRegister(email string) (bool, error) <span class="cov0" title="0">{
+        query := "SELECT COUNT(*) FROM users WHERE email = ?"
+        row := r.db.QueryRow(query, email)
+
+        var count int
+        if err := row.Scan(&amp;count); err != nil </span><span class="cov0" title="0">{
+                return false, err
+        }</span>
+        <span class="cov0" title="0">return count &gt; 0, nil</span>
+}
+
+// CheckUserByUsernameRegister checks if a user with the given username already exists
+func (r *UserRepositoryImpl) CheckUserByUsernameRegister(username string) (bool, error) <span class="cov0" title="0">{
+        query := "SELECT COUNT(*) FROM users WHERE username = ?"
+        row := r.db.QueryRow(query, username)
+
+        var count int
+        if err := row.Scan(&amp;count); err != nil </span><span class="cov0" title="0">{
+                return false, err
+        }</span>
+        <span class="cov0" title="0">return count &gt; 0, nil</span>
+}
+
+// CreateUser inserts a new user into the database
+func (r *UserRepositoryImpl) CreateUser(user *model.UserRegister) (result sql.Result, err error) <span class="cov0" title="0">{
+        query := "INSERT INTO users (username, email, password, first_name, last_name, dob, place_of_birth, phone_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        res, err := r.db.Exec(query, user.Username, user.Email, user.Password, user.FistName, user.LastName, user.Dob, user.PlaceOfBirth, user.PhoneNumber)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov0" title="0">return res, nil</span>
+}
+
+func (r *UserRepositoryImpl) CheckRefreshToken(UserId int, refreshToken string) (bool, error) <span class="cov0" title="0">{
+        query := "SELECT COUNT(*) FROM users WHERE id = ? AND refresh_token = ?"
+        row := r.db.QueryRow(query, UserId, refreshToken)
+
+        var count int
+        if err := row.Scan(&amp;count); err != nil </span><span class="cov0" title="0">{
+                return false, err
+        }</span>
+        <span class="cov0" title="0">return count &gt; 0, nil</span>
+}
+
+func (r *UserRepositoryImpl) DeleteRefreshToken(UserId int, refreshToken string) error <span class="cov0" title="0">{
+        query := "DELETE FROM users WHERE id = ? AND refresh_token = ?"
+        _, err := r.db.Exec(query, UserId, refreshToken)
+        return err
+}</span>
+
+func (r *UserRepositoryImpl) UpdateRefreshToken(UserId int, refreshToken string) error <span class="cov0" title="0">{
+        query := "UPDATE users SET refresh_token = ? WHERE id = ?"
+        _, err := r.db.Exec(query, refreshToken, UserId)
+        return err
+}</span>
+</pre>
+		
+		<pre class="file" id="file6" style="display: none">package service
+
+import (
+        "context"
+        "fmt"
+        "net/http"
+        "time"
+
+        "github.com/fajaramaulana/auth-serivce-payment/internal/config"
+        "github.com/fajaramaulana/auth-serivce-payment/internal/model"
+        "github.com/fajaramaulana/auth-serivce-payment/internal/repository"
+        "github.com/fajaramaulana/auth-serivce-payment/internal/utils"
+        "github.com/fajaramaulana/shared-proto-payment/proto/auth"
+        "github.com/sirupsen/logrus"
+        "golang.org/x/crypto/bcrypt"
+)
+
+type AuthServiceImpl struct {
+        repo                                repository.UserRepository
+        config                              config.Config
+        auth.UnimplementedAuthServiceServer // embed by value
+}
+
+func NewAuthService(authRepo repository.UserRepository, config config.Config) auth.AuthServiceServer <span class="cov8" title="1">{
+        return &amp;AuthServiceImpl{
+                repo:   authRepo,
+                config: config,
+        }
+}</span>
+
+func (s *AuthServiceImpl) LoginUser(ctx context.Context, req *auth.LoginRequest) (*auth.LoginResponse, error) <span class="cov0" title="0">{
+        logrus.Infof("Login attempt for user: %s", req.GetUsername())
+        // Find user by username
+        user, err := s.repo.FindUserByUsername(req.GetUsername())
+        if err != nil </span><span class="cov0" title="0">{
+                logrus.Errorf("Error finding user: %v", err)
+                return &amp;auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Invalid credentials", AccessToken: "", RefreshToken: ""}, nil
+        }</span>
+
+        <span class="cov0" title="0">if user == nil </span><span class="cov0" title="0">{
+                logrus.Warn("User not found")
+                return &amp;auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Invalid credentials", AccessToken: "", RefreshToken: ""}, nil
+        }</span>
+
+        // Compare password
+        <span class="cov0" title="0">if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.GetPassword())); err != nil </span><span class="cov0" title="0">{
+                logrus.Warn("Password mismatch")
+                return &amp;auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Invalid credentials", AccessToken: "", RefreshToken: ""}, nil
+        }</span>
+
+        <span class="cov0" title="0">accessToken, refreshToken, err := utils.CreateToken(user.ID, s.config.Get("JWT_SECRET"))
+        if err != nil </span><span class="cov0" title="0">{
+                logrus.Errorf("Error creating token: %v", err)
+                return &amp;auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, nil
+        }</span>
+
+        <span class="cov0" title="0">err = s.repo.UpdateRefreshToken(user.ID, refreshToken)
+        if err != nil </span><span class="cov0" title="0">{
+                logrus.Errorf("Error updating refresh token: %v", err)
+                return &amp;auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, nil
+        }</span>
+
+        <span class="cov0" title="0">logrus.Infof("User %s logged in successfully", req.GetUsername())
+        return &amp;auth.LoginResponse{Status: http.StatusOK, Message: "Login successful", AccessToken: accessToken, RefreshToken: refreshToken}, nil</span>
+}
+
+func (s *AuthServiceImpl) RegisterUser(ctx context.Context, req *auth.RegisterRequest) (*auth.RegisterResponse, error) <span class="cov0" title="0">{
+        logrus.Infof("Registering user: %s", req.GetUsername())
+        // Check if user already exists
+        checkUsername, err := s.repo.CheckUserByUsernameRegister(req.GetUsername())
+        if err != nil </span><span class="cov0" title="0">{
+                logrus.Errorf("Error finding user: %v", err)
+                return nil, fmt.Errorf("internal server error")
+        }</span>
+
+        <span class="cov0" title="0">if checkUsername </span><span class="cov0" title="0">{
+                logrus.Warn("Username already exists")
+                return &amp;auth.RegisterResponse{Status: http.StatusConflict, Message: "Username already exists", AccessToken: "", RefreshToken: ""}, nil
+        }</span>
+
+        <span class="cov0" title="0">checkEmail, err := s.repo.CheckUserByEmailRegister(req.GetEmail())
+        if err != nil </span><span class="cov0" title="0">{
+                logrus.Errorf("Error finding user: %v", err)
+                return nil, fmt.Errorf("internal server error")
+        }</span>
+
+        <span class="cov0" title="0">if checkEmail </span><span class="cov0" title="0">{
+                logrus.Warn("Email already exists")
+                return &amp;auth.RegisterResponse{Status: http.StatusConflict, Message: "Email already exists", AccessToken: "", RefreshToken: ""}, nil
+        }</span>
+
+        // Hash password
+        <span class="cov0" title="0">hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.GetPassword()), bcrypt.DefaultCost)
+        if err != nil </span><span class="cov0" title="0">{
+                logrus.Errorf("Error hashing password: %v", err)
+                return nil, fmt.Errorf("internal server error")
+        }</span>
+
+        // covert req.GetDob() to time.Time
+        <span class="cov0" title="0">dob, err := time.Parse("2006-01-02", req.GetDob())
+        if err != nil </span><span class="cov0" title="0">{
+                logrus.Errorf("Error parsing dob: %v", err)
+                return nil, fmt.Errorf("internal server error")
+        }</span>
+
+        // Create user
+        <span class="cov0" title="0">user := &amp;model.UserRegister{
+                Username:     req.GetUsername(),
+                Email:        req.GetEmail(),
+                Password:     string(hashedPassword),
+                FistName:     req.GetFirstName(),
+                LastName:     req.GetLastName(),
+                Dob:          dob,
+                PlaceOfBirth: req.GetPlaceOfBirth(),
+                PhoneNumber:  req.GetPhoneNumber(),
+        }
+        res, err := s.repo.CreateUser(user)
+        if err != nil </span><span class="cov0" title="0">{
+                logrus.Errorf("Error creating user: %v", err)
+                return nil, fmt.Errorf("internal server error")
+        }</span>
+        <span class="cov0" title="0">lastId, err := res.LastInsertId()
+        if err != nil </span><span class="cov0" title="0">{
+                logrus.Errorf("Error getting last insert ID: %v", err)
+                return nil, fmt.Errorf("internal server error")
+        }</span>
+
+        // int64 to int
+        <span class="cov0" title="0">userId := int(lastId)
+        accessToken, refreshToken, err := utils.CreateToken(userId, s.config.Get("JWT_SECRET"))
+        if err != nil </span><span class="cov0" title="0">{
+                logrus.Errorf("Error creating token: %v", err)
+                return nil, fmt.Errorf("internal server error")
+        }</span>
+
+        <span class="cov0" title="0">err = s.repo.UpdateRefreshToken(userId, refreshToken)
+        if err != nil </span><span class="cov0" title="0">{
+                logrus.Errorf("Error updating refresh token: %v", err)
+                return nil, fmt.Errorf("internal server error")
+        }</span>
+
+        <span class="cov0" title="0">logrus.Infof("User %s registered successfully", req.GetUsername())
+
+        return &amp;auth.RegisterResponse{Status: http.StatusOK, Message: "Registration successful", AccessToken: accessToken, RefreshToken: refreshToken}, nil</span>
+}
+
+func (s *AuthServiceImpl) RefreshToken(ctx context.Context, req *auth.RefreshTokenRequest) (*auth.RefreshTokenResponse, error) <span class="cov0" title="0">{
+        logrus.Infof("Refreshing token for user: token: %s", req.GetRefreshToken())
+
+        userId, err := utils.CheckToken(req.GetRefreshToken(), s.config.Get("JWT_SECRET"))
+        if err != nil </span><span class="cov0" title="0">{
+                logrus.Errorf("Error checking token: %v", err)
+                return nil, fmt.Errorf("internal server error")
+        }</span>
+
+        <span class="cov0" title="0">if userId == nil </span><span class="cov0" title="0">{
+                logrus.Warn("Invalid token")
+                return &amp;auth.RefreshTokenResponse{Status: http.StatusUnauthorized, Message: "Invalid token", AccessToken: "", RefreshToken: ""}, nil
+        }</span>
+
+        // Check if refresh token exists
+        <span class="cov0" title="0">checkRefreshToken, err := s.repo.CheckRefreshToken(userId.UserID, req.GetRefreshToken())
+        if err != nil </span><span class="cov0" title="0">{
+                logrus.Errorf("Error checking refresh token: %v", err)
+                return &amp;auth.RefreshTokenResponse{Status: http.StatusUnauthorized, Message: "Refresh Token Not Found", AccessToken: "", RefreshToken: ""}, nil
+        }</span>
+
+        <span class="cov0" title="0">if !checkRefreshToken </span><span class="cov0" title="0">{
+                logrus.Warn("Refresh token not found")
+                return &amp;auth.RefreshTokenResponse{Status: http.StatusUnauthorized, Message: "Refresh Token Not Found", AccessToken: "", RefreshToken: ""}, nil
+        }</span>
+
+        <span class="cov0" title="0">accessToken, _, err := utils.CreateToken(userId.UserID, s.config.Get("JWT_SECRET"))
+
+        if err != nil </span><span class="cov0" title="0">{
+                logrus.Errorf("Error creating token: %v", err)
+                return nil, fmt.Errorf("internal server error")
+        }</span>
+
+        <span class="cov0" title="0">logrus.Infof("Token refreshed successfully")
+
+        return &amp;auth.RefreshTokenResponse{Status: http.StatusOK, Message: "Token refreshed successfully", AccessToken: accessToken, RefreshToken: req.GetRefreshToken()}, nil</span>
+
+}
+</pre>
+		
+		<pre class="file" id="file7" style="display: none">package utils
+
+import (
+        "fmt"
+        "time"
+
+        "github.com/golang-jwt/jwt/v5"
+)
+
+// Access and Refresh Token expiry durations
+const (
+        AccessTokenExpiry  = 15 * time.Minute
+        RefreshTokenExpiry = 7 * 24 * time.Hour // 7 days
+)
+
+// Custom Claims structure
+type CustomClaims struct {
+        UserID int `json:"user_id"`
+        jwt.RegisteredClaims
+}
+
+// CreateToken generates an access token and a refresh token for the given userID
+func CreateToken(userID int, jwtSecret string) (accessTokenReturn string, refreshTokenReturn string, err error) <span class="cov0" title="0">{
+        // Define access token claims
+        accessTokenClaims := CustomClaims{
+                UserID: userID,
+                RegisteredClaims: jwt.RegisteredClaims{
+                        ExpiresAt: jwt.NewNumericDate(time.Now().Add(AccessTokenExpiry)),
+                        IssuedAt:  jwt.NewNumericDate(time.Now()),
+                },
+        }
+
+        // Create access token
+        accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, accessTokenClaims)
+        accessTokenString, err := accessToken.SignedString([]byte(jwtSecret)) // Convert to []byte
+        if err != nil </span><span class="cov0" title="0">{
+                return "", "", err
+        }</span>
+
+        // Define refresh token claims
+        <span class="cov0" title="0">refreshTokenClaims := CustomClaims{
+                UserID: userID,
+                RegisteredClaims: jwt.RegisteredClaims{
+                        ExpiresAt: jwt.NewNumericDate(time.Now().Add(RefreshTokenExpiry)),
+                        IssuedAt:  jwt.NewNumericDate(time.Now()),
+                },
+        }
+
+        // Create refresh token
+        refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshTokenClaims)
+        refreshTokenString, err := refreshToken.SignedString([]byte(jwtSecret)) // Convert to []byte
+        if err != nil </span><span class="cov0" title="0">{
+                return "", "", err
+        }</span>
+
+        <span class="cov0" title="0">return accessTokenString, refreshTokenString, nil</span>
+}
+
+// CheckToken validates the given token string
+func CheckToken(tokenString string, jwtSecret string) (*CustomClaims, error) <span class="cov0" title="0">{
+        // Parse the token with claims
+        token, err := jwt.ParseWithClaims(tokenString, &amp;CustomClaims{}, func(token *jwt.Token) (interface{}, error) </span><span class="cov0" title="0">{
+                // Ensure the signing method is what we expect
+                if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok </span><span class="cov0" title="0">{
+                        return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+                }</span>
+                <span class="cov0" title="0">return []byte(jwtSecret), nil</span> // Convert jwtSecret to []byte here as well
+        })
+
+        <span class="cov0" title="0">if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("error checking token: %w", err)
+        }</span>
+
+        // Check if the token is valid and has the right claims
+        <span class="cov0" title="0">if claims, ok := token.Claims.(*CustomClaims); ok &amp;&amp; token.Valid </span><span class="cov0" title="0">{
+                return claims, nil
+        }</span>
+
+        <span class="cov0" title="0">return nil, fmt.Errorf("invalid token")</span>
+}
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

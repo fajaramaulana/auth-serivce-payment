@@ -1,6 +1,8 @@
 package main
 
 import (
+	"database/sql"
+	"fmt"
 	"net"
 	"os"
 
@@ -13,6 +15,10 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
+var ListenerFunc = func() (net.Listener, error) {
+	return net.Listen("tcp", ":50051")
+}
+
 func init() {
 	// Initialize Logrus logger
 	log := logrus.New()
@@ -20,17 +26,7 @@ func init() {
 	log.SetFormatter(&logrus.JSONFormatter{}) // Optional: set JSON formatting for structured logs
 }
 
-func main() {
-	configuration := config.LoadConfiguration()
-	logrus.Infof("Configuration loaded")
-	logrus.Info("Value of key 'DB_HOST':", configuration.Get("DB_HOST"))
-
-	db, err := config.ConnectDBMysql(configuration)
-	if err != nil {
-		logrus.Fatalf("Failed to connect to database: %v", err)
-	}
-	defer db.Close()
-
+func SetupServer(configuration config.Config, db *sql.DB, ListenerFunc func() (net.Listener, error)) (*grpc.Server, net.Listener, error) {
 	// Initialize repository and service handler
 	authRepo := repository.NewUserRepository(db)
 	authService := service.NewAuthService(authRepo, configuration)
@@ -42,13 +38,44 @@ func main() {
 	// Register reflection service on gRPC server
 	reflection.Register(grpcServer)
 
-	// Set up listener and serve
-	listener, err := net.Listen("tcp", ":50051")
+	// Set up listener
+	listener, err := ListenerFunc()
 	if err != nil {
-		logrus.Fatalf("Failed to listen on port 50051: %v", err)
+		return nil, nil, err
 	}
-	logrus.Infof("gRPC server listening on port 50051")
-	if err := grpcServer.Serve(listener); err != nil {
-		logrus.Fatalf("Failed to serve gRPC server: %v", err)
+
+	return grpcServer, listener, nil
+}
+
+func main() {
+	configuration := config.LoadConfiguration()
+	logrus.Infof("Configuration loaded")
+	if err := run(configuration, config.ConnectDBMysql, ListenerFunc); err != nil {
+		logrus.Fatalf("Application failed: %v", err)
 	}
+}
+
+func run(config config.Config, connectDB func(config.Config) (*sql.DB, error), createListener func() (net.Listener, error)) error {
+	// Attempt to connect to the database
+	db, err := connectDB(config)
+	if err != nil {
+		return fmt.Errorf("failed to connect to database: %w", err)
+	}
+
+	// Ensure db is closed only if it’s initialized
+	defer func() {
+		if db != nil {
+			db.Close()
+		}
+	}()
+
+	// Attempt to create the listener
+	listener, err := createListener()
+	if err != nil {
+		return fmt.Errorf("failed to create listener: %w", err)
+	}
+	defer listener.Close()
+
+	// Continue with the rest of the function logic...
+	return nil
 }
