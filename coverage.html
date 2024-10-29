@@ -65,7 +65,7 @@
 				
 				<option value="file4">github.com/fajaramaulana/auth-serivce-payment/internal/config/mysql.go (0.0%)</option>
 				
-				<option value="file5">github.com/fajaramaulana/auth-serivce-payment/internal/repository/auth_repository_impl.go (2.2%)</option>
+				<option value="file5">github.com/fajaramaulana/auth-serivce-payment/internal/repository/auth_repository_impl.go (87.0%)</option>
 				
 				<option value="file6">github.com/fajaramaulana/auth-serivce-payment/internal/service/auth_service_impl.go (1.2%)</option>
 				
@@ -164,28 +164,6 @@ func run(config config.Config, connectDB func(config.Config) (*sql.DB, error), c
         // Continue with the rest of the function logic...
         return nil</span>
 }
-
-/* func main() {
-        configuration := config.LoadConfiguration()
-        logrus.Infof("Configuration loaded")
-        logrus.Info("Value of key 'DB_HOST':", configuration.Get("DB_HOST"))
-
-        db, err := config.ConnectDBMysql(configuration)
-        if err != nil {
-                logrus.Fatalf("Failed to connect to database: %v", err)
-        }
-        defer db.Close()
-
-        grpcServer, listener, err := SetupServer(configuration, db, ListenerFunc)
-        if err != nil {
-                logrus.Fatalf("Failed to set up server: %v", err)
-        }
-
-        logrus.Infof("gRPC server listening on port 50051")
-        if err := grpcServer.Serve(listener); err != nil {
-                logrus.Fatalf("Failed to serve gRPC server: %v", err)
-        }
-} */
 </pre>
 		
 		<pre class="file" id="file1" style="display: none">package mocks
@@ -322,37 +300,37 @@ func NewUserRepository(db *sql.DB) UserRepository <span class="cov8" title="1">{
         return &amp;UserRepositoryImpl{db: db}
 }</span>
 
-func (r *UserRepositoryImpl) FindUserByUsername(username string) (*model.GetUserPassword, error) <span class="cov0" title="0">{
+func (r *UserRepositoryImpl) FindUserByUsername(username string) (*model.GetUserPassword, error) <span class="cov8" title="1">{
         var user model.GetUserPassword
         query := "SELECT id, username, email, password FROM users WHERE username = ?"
         row := r.db.QueryRow(query, username)
 
-        if err := row.Scan(&amp;user.ID, &amp;user.Username, &amp;user.Email, &amp;user.Password); err != nil </span><span class="cov0" title="0">{
-                if err == sql.ErrNoRows </span><span class="cov0" title="0">{
+        if err := row.Scan(&amp;user.ID, &amp;user.Username, &amp;user.Email, &amp;user.Password); err != nil </span><span class="cov8" title="1">{
+                if err == sql.ErrNoRows </span><span class="cov8" title="1">{
                         return nil, nil // User not found
                 }</span>
                 <span class="cov0" title="0">return nil, err</span> // Other error
         }
-        <span class="cov0" title="0">return &amp;user, nil</span>
+        <span class="cov8" title="1">return &amp;user, nil</span>
 }
 
 // FindUserByEmail retrieves a user by their email
-func (r *UserRepositoryImpl) FindUserByEmail(email string) (*model.GetUserPassword, error) <span class="cov0" title="0">{
+func (r *UserRepositoryImpl) FindUserByEmail(email string) (*model.GetUserPassword, error) <span class="cov8" title="1">{
         var user model.GetUserPassword
         query := "SELECT id, username, email, password FROM users WHERE email = ?"
         row := r.db.QueryRow(query, email)
 
-        if err := row.Scan(&amp;user.ID, &amp;user.Username, &amp;user.Email, &amp;user.Password); err != nil </span><span class="cov0" title="0">{
-                if err == sql.ErrNoRows </span><span class="cov0" title="0">{
+        if err := row.Scan(&amp;user.ID, &amp;user.Username, &amp;user.Email, &amp;user.Password); err != nil </span><span class="cov8" title="1">{
+                if err == sql.ErrNoRows </span><span class="cov8" title="1">{
                         return nil, nil // User not found
                 }</span>
                 <span class="cov0" title="0">return nil, err</span> // Other error
         }
-        <span class="cov0" title="0">return &amp;user, nil</span>
+        <span class="cov8" title="1">return &amp;user, nil</span>
 }
 
 // CheckUserByEmailRegister checks if a user with the given email already exists
-func (r *UserRepositoryImpl) CheckUserByEmailRegister(email string) (bool, error) <span class="cov0" title="0">{
+func (r *UserRepositoryImpl) CheckUserByEmailRegister(email string) (bool, error) <span class="cov8" title="1">{
         query := "SELECT COUNT(*) FROM users WHERE email = ?"
         row := r.db.QueryRow(query, email)
 
@@ -360,11 +338,11 @@ func (r *UserRepositoryImpl) CheckUserByEmailRegister(email string) (bool, error
         if err := row.Scan(&amp;count); err != nil </span><span class="cov0" title="0">{
                 return false, err
         }</span>
-        <span class="cov0" title="0">return count &gt; 0, nil</span>
+        <span class="cov8" title="1">return count &gt; 0, nil</span>
 }
 
 // CheckUserByUsernameRegister checks if a user with the given username already exists
-func (r *UserRepositoryImpl) CheckUserByUsernameRegister(username string) (bool, error) <span class="cov0" title="0">{
+func (r *UserRepositoryImpl) CheckUserByUsernameRegister(username string) (bool, error) <span class="cov8" title="1">{
         query := "SELECT COUNT(*) FROM users WHERE username = ?"
         row := r.db.QueryRow(query, username)
 
@@ -372,21 +350,21 @@ func (r *UserRepositoryImpl) CheckUserByUsernameRegister(username string) (bool,
         if err := row.Scan(&amp;count); err != nil </span><span class="cov0" title="0">{
                 return false, err
         }</span>
-        <span class="cov0" title="0">return count &gt; 0, nil</span>
+        <span class="cov8" title="1">return count &gt; 0, nil</span>
 }
 
 // CreateUser inserts a new user into the database
-func (r *UserRepositoryImpl) CreateUser(user *model.UserRegister) (result sql.Result, err error) <span class="cov0" title="0">{
+func (r *UserRepositoryImpl) CreateUser(user *model.UserRegister) (result sql.Result, err error) <span class="cov8" title="1">{
         query := "INSERT INTO users (username, email, password, first_name, last_name, dob, place_of_birth, phone_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
         res, err := r.db.Exec(query, user.Username, user.Email, user.Password, user.FistName, user.LastName, user.Dob, user.PlaceOfBirth, user.PhoneNumber)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
 
-        <span class="cov0" title="0">return res, nil</span>
+        <span class="cov8" title="1">return res, nil</span>
 }
 
-func (r *UserRepositoryImpl) CheckRefreshToken(UserId int, refreshToken string) (bool, error) <span class="cov0" title="0">{
+func (r *UserRepositoryImpl) CheckRefreshToken(UserId int, refreshToken string) (bool, error) <span class="cov8" title="1">{
         query := "SELECT COUNT(*) FROM users WHERE id = ? AND refresh_token = ?"
         row := r.db.QueryRow(query, UserId, refreshToken)
 
@@ -394,16 +372,16 @@ func (r *UserRepositoryImpl) CheckRefreshToken(UserId int, refreshToken string) 
         if err := row.Scan(&amp;count); err != nil </span><span class="cov0" title="0">{
                 return false, err
         }</span>
-        <span class="cov0" title="0">return count &gt; 0, nil</span>
+        <span class="cov8" title="1">return count &gt; 0, nil</span>
 }
 
-func (r *UserRepositoryImpl) DeleteRefreshToken(UserId int, refreshToken string) error <span class="cov0" title="0">{
+func (r *UserRepositoryImpl) DeleteRefreshToken(UserId int, refreshToken string) error <span class="cov8" title="1">{
         query := "DELETE FROM users WHERE id = ? AND refresh_token = ?"
         _, err := r.db.Exec(query, UserId, refreshToken)
         return err
 }</span>
 
-func (r *UserRepositoryImpl) UpdateRefreshToken(UserId int, refreshToken string) error <span class="cov0" title="0">{
+func (r *UserRepositoryImpl) UpdateRefreshToken(UserId int, refreshToken string) error <span class="cov8" title="1">{
         query := "UPDATE users SET refresh_token = ? WHERE id = ?"
         _, err := r.db.Exec(query, refreshToken, UserId)
         return err
