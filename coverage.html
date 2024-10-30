@@ -57,19 +57,19 @@
 				
 				<option value="file0">github.com/fajaramaulana/auth-serivce-payment/cmd/auth/main.go (83.3%)</option>
 				
-				<option value="file1">github.com/fajaramaulana/auth-serivce-payment/internal/config/config.go (0.0%)</option>
+				<option value="file1">github.com/fajaramaulana/auth-serivce-payment/internal/config/config.go (81.8%)</option>
 				
-				<option value="file2">github.com/fajaramaulana/auth-serivce-payment/internal/config/mysql.go (0.0%)</option>
+				<option value="file2">github.com/fajaramaulana/auth-serivce-payment/internal/config/mysql.go (92.9%)</option>
 				
 				<option value="file3">github.com/fajaramaulana/auth-serivce-payment/internal/repository/auth_repository_impl.go (83.0%)</option>
 				
 				<option value="file4">github.com/fajaramaulana/auth-serivce-payment/internal/service/auth_service_impl.go (84.8%)</option>
 				
-				<option value="file5">github.com/fajaramaulana/auth-serivce-payment/internal/utils/global.go (75.0%)</option>
+				<option value="file5">github.com/fajaramaulana/auth-serivce-payment/internal/utils/global.go (100.0%)</option>
 				
-				<option value="file6">github.com/fajaramaulana/auth-serivce-payment/internal/utils/password_utils.go (50.0%)</option>
+				<option value="file6">github.com/fajaramaulana/auth-serivce-payment/internal/utils/password_utils.go (100.0%)</option>
 				
-				<option value="file7">github.com/fajaramaulana/auth-serivce-payment/internal/utils/token.go (4.3%)</option>
+				<option value="file7">github.com/fajaramaulana/auth-serivce-payment/internal/utils/token.go (78.3%)</option>
 				
 				<option value="file8">github.com/fajaramaulana/auth-serivce-payment/mocks/mock_config.go (0.0%)</option>
 				
@@ -80,8 +80,6 @@
 				<option value="file11">github.com/fajaramaulana/auth-serivce-payment/mocks/mock_repository.go (12.5%)</option>
 				
 				<option value="file12">github.com/fajaramaulana/auth-serivce-payment/mocks/mock_token.go (100.0%)</option>
-				
-				<option value="file13">github.com/fajaramaulana/auth-serivce-payment/mocks/mock_utils.go (0.0%)</option>
 				
 				</select>
 			</div>
@@ -199,27 +197,27 @@ type Config interface {
 type configImpl struct {
 }
 
-func (config *configImpl) Get(key string) string <span class="cov0" title="0">{
+func (config *configImpl) Get(key string) string <span class="cov8" title="1">{
         return os.Getenv(key)
 }</span>
 
-func New(filenames string) Config <span class="cov0" title="0">{
+func New(filenames string) Config <span class="cov8" title="1">{
         fmt.Println("Loading .env file from:", filenames)
         if err := godotenv.Load(filenames); err != nil </span><span class="cov0" title="0">{
                 log.Fatalf("Error loading .env file, %v", err)
         }</span>
         // Initialize your configuration fields from os.Getenv()
-        <span class="cov0" title="0">return &amp;configImpl{}</span>
+        <span class="cov8" title="1">return &amp;configImpl{}</span>
 }
 
-func LoadConfiguration() Config <span class="cov0" title="0">{
+func LoadConfiguration() Config <span class="cov8" title="1">{
         wd, err := os.Getwd()
         if err != nil </span><span class="cov0" title="0">{
                 log.Fatalf("Error getting working directory: %v", err)
         }</span>
 
         // Construct the path to the .env file
-        <span class="cov0" title="0">envPath := filepath.Join(wd, "../../", ".env")
+        <span class="cov8" title="1">envPath := filepath.Join(wd, "../../", ".env")
         configuration := New(envPath)
 
         return configuration</span>
@@ -236,26 +234,26 @@ import (
         _ "github.com/go-sql-driver/mysql"
 )
 
-func ConnectDBMysql(config Config) (*sql.DB, error) <span class="cov0" title="0">{
+func ConnectDBMysql(config Config) (*sql.DB, error) <span class="cov8" title="1">{
         // Construct the DSN
         dbUser := config.Get("DB_USER")
         dbPassword := config.Get("DB_PASSWORD")
         dbHost := config.Get("DB_HOST")
         dbPort := config.Get("DB_PORT")
         dbType := config.Get("DB_TYPE")
+        dbName := config.Get("DB_NAME")
         port, err := strconv.Atoi(dbPort)
-        if err != nil </span><span class="cov0" title="0">{
+        if err != nil </span><span class="cov8" title="1">{
                 return nil, err
         }</span>
-        <span class="cov0" title="0">dbName := config.Get("DB_NAME")
-        dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&amp;parseTime=True&amp;loc=Local",
+        <span class="cov8" title="1">dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&amp;parseTime=True&amp;loc=Local",
                 dbUser, dbPassword, dbHost, port, dbName)
         db, err := sql.Open(dbType, dsn)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
 
-        <span class="cov0" title="0">return db, nil</span>
+        <span class="cov8" title="1">return db, nil</span>
 }
 </pre>
 		
@@ -562,7 +560,7 @@ import "time"
 
 func TimeMustParse(layout string) time.Time <span class="cov8" title="1">{
         t, err := time.Parse("2006-01-02", layout)
-        if err != nil </span><span class="cov0" title="0">{
+        if err != nil </span><span class="cov8" title="1">{
                 panic(err)</span>
         }
         <span class="cov8" title="1">return t</span>
@@ -583,7 +581,7 @@ func NewPasswordHasher() PasswordHasher <span class="cov8" title="1">{
         return BcryptHasher{}
 }</span>
 
-func (h BcryptHasher) Generate(password []byte, cost int) ([]byte, error) <span class="cov0" title="0">{
+func (h BcryptHasher) Generate(password []byte, cost int) ([]byte, error) <span class="cov8" title="1">{
         return bcrypt.GenerateFromPassword(password, cost)
 }</span>
 </pre>
@@ -626,7 +624,7 @@ type CustomClaims struct {
 }
 
 // CreateToken generates an access token and a refresh token for the given userID
-func (t TokenHandler) CreateToken(userID int) (accessTokenReturn string, refreshTokenReturn string, err error) <span class="cov0" title="0">{
+func (t TokenHandler) CreateToken(userID int) (accessTokenReturn string, refreshTokenReturn string, err error) <span class="cov8" title="1">{
         // Define access token claims
         jwtSecret := t.config.Get("JWT_SECRET")
         accessTokenClaims := CustomClaims{
@@ -645,7 +643,7 @@ func (t TokenHandler) CreateToken(userID int) (accessTokenReturn string, refresh
         }</span>
 
         // Define refresh token claims
-        <span class="cov0" title="0">refreshTokenClaims := CustomClaims{
+        <span class="cov8" title="1">refreshTokenClaims := CustomClaims{
                 UserID: userID,
                 RegisteredClaims: jwt.RegisteredClaims{
                         ExpiresAt: jwt.NewNumericDate(time.Now().Add(RefreshTokenExpiry)),
@@ -660,27 +658,27 @@ func (t TokenHandler) CreateToken(userID int) (accessTokenReturn string, refresh
                 return "", "", err
         }</span>
 
-        <span class="cov0" title="0">return accessTokenString, refreshTokenString, nil</span>
+        <span class="cov8" title="1">return accessTokenString, refreshTokenString, nil</span>
 }
 
 // CheckToken validates the given token string
-func (t TokenHandler) CheckToken(tokenString string) (*CustomClaims, error) <span class="cov0" title="0">{
+func (t TokenHandler) CheckToken(tokenString string) (*CustomClaims, error) <span class="cov8" title="1">{
         // Parse the token with claims
         jwtSecret := t.config.Get("JWT_SECRET")
-        token, err := jwt.ParseWithClaims(tokenString, &amp;CustomClaims{}, func(token *jwt.Token) (interface{}, error) </span><span class="cov0" title="0">{
+        token, err := jwt.ParseWithClaims(tokenString, &amp;CustomClaims{}, func(token *jwt.Token) (interface{}, error) </span><span class="cov8" title="1">{
                 // Ensure the signing method is what we expect
                 if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok </span><span class="cov0" title="0">{
                         return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
                 }</span>
-                <span class="cov0" title="0">return []byte(jwtSecret), nil</span> // Convert jwtSecret to []byte here as well
+                <span class="cov8" title="1">return []byte(jwtSecret), nil</span> // Convert jwtSecret to []byte here as well
         })
 
-        <span class="cov0" title="0">if err != nil </span><span class="cov0" title="0">{
+        <span class="cov8" title="1">if err != nil </span><span class="cov0" title="0">{
                 return nil, fmt.Errorf("error checking token: %w", err)
         }</span>
 
         // Check if the token is valid and has the right claims
-        <span class="cov0" title="0">if claims, ok := token.Claims.(*CustomClaims); ok &amp;&amp; token.Valid </span><span class="cov0" title="0">{
+        <span class="cov8" title="1">if claims, ok := token.Claims.(*CustomClaims); ok &amp;&amp; token.Valid </span><span class="cov8" title="1">{
                 return claims, nil
         }</span>
 
@@ -811,44 +809,6 @@ func (m *MockTokenHandler) CreateToken(userID int) (string, string, error) <span
 func (m *MockTokenHandler) CheckToken(tokenString string) (*utils.CustomClaims, error) <span class="cov8" title="1">{
         args := m.Called(tokenString)
         return args.Get(0).(*utils.CustomClaims), args.Error(1)
-}</span>
-</pre>
-		
-		<pre class="file" id="file13" style="display: none">package mocks
-
-import (
-        "github.com/fajaramaulana/auth-serivce-payment/internal/utils"
-        "github.com/stretchr/testify/mock"
-)
-
-// MockUtils is a mock implementation of utility functions
-
-type MockUtils struct {
-        mock.Mock
-}
-
-// CreateToken is a mock implementation of the CreateToken function
-
-func (m *MockUtils) CreateToken(userID int, secret string) (string, string, error) <span class="cov0" title="0">{
-
-        args := m.Called(userID, secret)
-
-        return args.String(0), args.String(1), args.Error(2)
-
-}</span>
-
-func (m *MockUtils) CheckToken(tokenString string, jwtSecret string) (*utils.CustomClaims, error) <span class="cov0" title="0">{
-
-        args := m.Called(tokenString, jwtSecret)
-
-        return args.Get(0).(*utils.CustomClaims), args.Error(1)
-}</span>
-
-func (m *MockUtils) Generate(password []byte, cost int) ([]byte, error) <span class="cov0" title="0">{
-
-        args := m.Called(password, cost)
-
-        return args.Get(0).([]byte), args.Error(1)
 }</span>
 </pre>
 		
