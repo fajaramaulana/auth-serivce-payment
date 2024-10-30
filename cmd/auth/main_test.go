@@ -7,10 +7,10 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock" // import this package for SQL mock support
-	"github.com/fajaramaulana/auth-serivce-payment/cmd/auth/mocks"
 	"github.com/fajaramaulana/auth-serivce-payment/internal/config"
 	"github.com/fajaramaulana/auth-serivce-payment/internal/repository"
 	"github.com/fajaramaulana/auth-serivce-payment/internal/service"
+	"github.com/fajaramaulana/auth-serivce-payment/mocks"
 	"github.com/fajaramaulana/shared-proto-payment/proto/auth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -57,12 +57,15 @@ func TestSetupServer_ListenerError(t *testing.T) {
 func TestMainFunction(t *testing.T) {
 	mockConfig := new(mocks.MockConfig)
 	mockConfig.On("Get", "DB_HOST").Return("localhost")
+	mockPassHash := new(mocks.MockPasswordHasher)
+
+	mockToken := new(mocks.MockTokenHandler)
 
 	mockDB := new(sql.DB) // Substitute with a real mock DB if available
 
 	// Mock repository and service
 	authRepo := repository.NewUserRepository(mockDB)
-	authService := service.NewAuthService(authRepo, mockConfig)
+	authService := service.NewAuthService(authRepo, mockConfig, mockPassHash, mockToken)
 
 	// Create the gRPC server and listener
 	grpcServer := grpc.NewServer()

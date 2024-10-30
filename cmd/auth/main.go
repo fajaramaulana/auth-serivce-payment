@@ -9,6 +9,7 @@ import (
 	"github.com/fajaramaulana/auth-serivce-payment/internal/config"
 	"github.com/fajaramaulana/auth-serivce-payment/internal/repository"
 	"github.com/fajaramaulana/auth-serivce-payment/internal/service"
+	"github.com/fajaramaulana/auth-serivce-payment/internal/utils"
 	"github.com/fajaramaulana/shared-proto-payment/proto/auth"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
@@ -29,7 +30,9 @@ func init() {
 func SetupServer(configuration config.Config, db *sql.DB, ListenerFunc func() (net.Listener, error)) (*grpc.Server, net.Listener, error) {
 	// Initialize repository and service handler
 	authRepo := repository.NewUserRepository(db)
-	authService := service.NewAuthService(authRepo, configuration)
+	passwordHasher := utils.NewPasswordHasher()
+	tokenHandler := utils.NewTokenHandler(configuration)
+	authService := service.NewAuthService(authRepo, configuration, passwordHasher, tokenHandler)
 
 	// Initialize gRPC server
 	grpcServer := grpc.NewServer()

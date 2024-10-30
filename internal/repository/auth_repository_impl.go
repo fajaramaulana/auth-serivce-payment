@@ -69,8 +69,19 @@ func (r *UserRepositoryImpl) CheckUserByUsernameRegister(username string) (bool,
 
 // CreateUser inserts a new user into the database
 func (r *UserRepositoryImpl) CreateUser(user *model.UserRegister) (result sql.Result, err error) {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+
 	query := "INSERT INTO users (username, email, password, first_name, last_name, dob, place_of_birth, phone_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-	res, err := r.db.Exec(query, user.Username, user.Email, user.Password, user.FistName, user.LastName, user.Dob, user.PlaceOfBirth, user.PhoneNumber)
+	res, err := tx.Exec(query, user.Username, user.Email, user.Password, user.FistName, user.LastName, user.Dob, user.PlaceOfBirth, user.PhoneNumber)
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+
+	err = tx.Commit()
 	if err != nil {
 		return nil, err
 	}

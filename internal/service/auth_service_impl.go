@@ -13,18 +13,24 @@ import (
 	"github.com/fajaramaulana/shared-proto-payment/proto/auth"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/bcrypt"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type AuthServiceImpl struct {
 	repo                                repository.UserRepository
 	config                              config.Config
+	hasher                              utils.PasswordHasher
+	token                               utils.TokenHandlerIntf
 	auth.UnimplementedAuthServiceServer // embed by value
 }
 
-func NewAuthService(authRepo repository.UserRepository, config config.Config) auth.AuthServiceServer {
+func NewAuthService(authRepo repository.UserRepository, config config.Config, hasher utils.PasswordHasher, token utils.TokenHandlerIntf) auth.AuthServiceServer {
 	return &AuthServiceImpl{
 		repo:   authRepo,
 		config: config,
+		hasher: hasher,
+		token:  token,
 	}
 }
 
@@ -48,7 +54,7 @@ func (s *AuthServiceImpl) LoginUser(ctx context.Context, req *auth.LoginRequest)
 		return &auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Invalid credentials", AccessToken: "", RefreshToken: ""}, nil
 	}
 
-	accessToken, refreshToken, err := utils.CreateToken(user.ID, s.config.Get("JWT_SECRET"))
+	accessToken, refreshToken, err := s.token.CreateToken(user.ID)
 	if err != nil {
 		logrus.Errorf("Error creating token: %v", err)
 		return &auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, nil
@@ -80,7 +86,7 @@ func (s *AuthServiceImpl) RegisterUser(ctx context.Context, req *auth.RegisterRe
 
 	checkEmail, err := s.repo.CheckUserByEmailRegister(req.GetEmail())
 	if err != nil {
-		logrus.Errorf("Error finding user: %v", err)
+		logrus.Errorf("Error finding email: %v", err)
 		return nil, fmt.Errorf("internal server error")
 	}
 
@@ -89,11 +95,10 @@ func (s *AuthServiceImpl) RegisterUser(ctx context.Context, req *auth.RegisterRe
 		return &auth.RegisterResponse{Status: http.StatusConflict, Message: "Email already exists", AccessToken: "", RefreshToken: ""}, nil
 	}
 
-	// Hash password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.GetPassword()), bcrypt.DefaultCost)
+	hashedPassword, err := s.hasher.Generate([]byte(req.GetPassword()), bcrypt.DefaultCost)
 	if err != nil {
 		logrus.Errorf("Error hashing password: %v", err)
-		return nil, fmt.Errorf("internal server error")
+		return nil, fmt.Errorf("internal server error") // Early return on error
 	}
 
 	// covert req.GetDob() to time.Time
@@ -127,7 +132,7 @@ func (s *AuthServiceImpl) RegisterUser(ctx context.Context, req *auth.RegisterRe
 
 	// int64 to int
 	userId := int(lastId)
-	accessToken, refreshToken, err := utils.CreateToken(userId, s.config.Get("JWT_SECRET"))
+	accessToken, refreshToken, err := s.token.CreateToken(userId)
 	if err != nil {
 		logrus.Errorf("Error creating token: %v", err)
 		return nil, fmt.Errorf("internal server error")
@@ -147,38 +152,29 @@ func (s *AuthServiceImpl) RegisterUser(ctx context.Context, req *auth.RegisterRe
 func (s *AuthServiceImpl) RefreshToken(ctx context.Context, req *auth.RefreshTokenRequest) (*auth.RefreshTokenResponse, error) {
 	logrus.Infof("Refreshing token for user: token: %s", req.GetRefreshToken())
 
-	userId, err := utils.CheckToken(req.GetRefreshToken(), s.config.Get("JWT_SECRET"))
+	userIdResult, err := s.token.CheckToken(req.GetRefreshToken())
 	if err != nil {
 		logrus.Errorf("Error checking token: %v", err)
-		return nil, fmt.Errorf("internal server error")
+		return nil, status.Errorf(codes.Internal, "internal server error")
 	}
 
-	if userId == nil {
-		logrus.Warn("Invalid token")
-		return &auth.RefreshTokenResponse{Status: http.StatusUnauthorized, Message: "Invalid token", AccessToken: "", RefreshToken: ""}, nil
+	// Add a call to `CheckRefreshToken` here if needed.
+	isTokenValid, err := s.repo.CheckRefreshToken(userIdResult.UserID, req.GetRefreshToken())
+	if err != nil || !isTokenValid {
+		logrus.Errorf("Error validating refresh token: %v", err)
+		return nil, status.Errorf(codes.Internal, "refresh token invalid or expired")
 	}
 
-	// Check if refresh token exists
-	checkRefreshToken, err := s.repo.CheckRefreshToken(userId.UserID, req.GetRefreshToken())
+	newAccessToken, _, err := s.token.CreateToken(userIdResult.UserID)
 	if err != nil {
-		logrus.Errorf("Error checking refresh token: %v", err)
-		return &auth.RefreshTokenResponse{Status: http.StatusUnauthorized, Message: "Refresh Token Not Found", AccessToken: "", RefreshToken: ""}, nil
+		logrus.Errorf("Error creating new access token: %v", err)
+		return nil, status.Errorf(codes.Internal, "internal server error")
 	}
 
-	if !checkRefreshToken {
-		logrus.Warn("Refresh token not found")
-		return &auth.RefreshTokenResponse{Status: http.StatusUnauthorized, Message: "Refresh Token Not Found", AccessToken: "", RefreshToken: ""}, nil
-	}
-
-	accessToken, _, err := utils.CreateToken(userId.UserID, s.config.Get("JWT_SECRET"))
-
-	if err != nil {
-		logrus.Errorf("Error creating token: %v", err)
-		return nil, fmt.Errorf("internal server error")
-	}
-
-	logrus.Infof("Token refreshed successfully")
-
-	return &auth.RefreshTokenResponse{Status: http.StatusOK, Message: "Token refreshed successfully", AccessToken: accessToken, RefreshToken: req.GetRefreshToken()}, nil
-
+	return &auth.RefreshTokenResponse{
+		Status:       http.StatusOK,
+		Message:      "Token refreshed successfully",
+		AccessToken:  newAccessToken,
+		RefreshToken: req.GetRefreshToken(),
+	}, nil
 }

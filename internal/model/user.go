@@ -40,3 +40,14 @@ type UserRegister struct {
 	PlaceOfBirth string    `json:"place_of_birth"`
 	PhoneNumber  string    `json:"phone_number"`
 }
+
+type UserLogin struct {
+	Id           int    `json:"id"`
+	Username     string `json:"username"`
+	Email        string `json:"email"`
+	RefreshToken string `json:"refresh_token"`
+}
+
+type UserId struct {
+	UserID int `json:"id"`
+}

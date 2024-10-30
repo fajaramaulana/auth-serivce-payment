@@ -3,11 +3,11 @@ package repository_test
 import (
 	"database/sql"
 	"testing"
-	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/fajaramaulana/auth-serivce-payment/internal/model"
 	"github.com/fajaramaulana/auth-serivce-payment/internal/repository"
+	"github.com/fajaramaulana/auth-serivce-payment/internal/utils"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -147,15 +147,6 @@ func TestCheckUserByUsernameRegister(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, exists)
 }
-
-func timeMustParse(layout string) time.Time {
-	t, err := time.Parse("2006-01-02", layout)
-	if err != nil {
-		panic(err)
-	}
-	return t
-}
-
 func TestCreateUser(t *testing.T) {
 	db, mock, _ := sqlmock.New()
 	defer db.Close()
@@ -168,15 +159,19 @@ func TestCreateUser(t *testing.T) {
 		Password:     "hashedpassword",
 		FistName:     "First",
 		LastName:     "Last",
-		Dob:          timeMustParse("2006-01-02"),
+		Dob:          utils.TimeMustParse("2006-01-02"),
 		PlaceOfBirth: "City",
 		PhoneNumber:  "1234567890",
 	}
 
 	// Mock SQL query and expected result
+
+	mock.ExpectBegin()
+	// mock the query to insert user
 	mock.ExpectExec("INSERT INTO users").
 		WithArgs(user.Username, user.Email, user.Password, user.FistName, user.LastName, user.Dob, user.PlaceOfBirth, user.PhoneNumber).
 		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
 
 	// Test the function
 	result, err := repo.CreateUser(user)

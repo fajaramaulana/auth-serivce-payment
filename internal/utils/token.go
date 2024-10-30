@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/fajaramaulana/auth-serivce-payment/internal/config"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -13,6 +14,21 @@ const (
 	RefreshTokenExpiry = 7 * 24 * time.Hour // 7 days
 )
 
+type TokenHandlerIntf interface {
+	CreateToken(userID int) (accessTokenReturn string, refreshTokenReturn string, err error)
+	CheckToken(tokenString string) (*CustomClaims, error)
+}
+
+type TokenHandler struct {
+	config config.Config
+}
+
+func NewTokenHandler(config config.Config) TokenHandlerIntf {
+	return &TokenHandler{
+		config: config,
+	}
+}
+
 // Custom Claims structure
 type CustomClaims struct {
 	UserID int `json:"user_id"`
@@ -20,8 +36,9 @@ type CustomClaims struct {
 }
 
 // CreateToken generates an access token and a refresh token for the given userID
-func CreateToken(userID int, jwtSecret string) (accessTokenReturn string, refreshTokenReturn string, err error) {
+func (t TokenHandler) CreateToken(userID int) (accessTokenReturn string, refreshTokenReturn string, err error) {
 	// Define access token claims
+	jwtSecret := t.config.Get("JWT_SECRET")
 	accessTokenClaims := CustomClaims{
 		UserID: userID,
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -57,8 +74,9 @@ func CreateToken(userID int, jwtSecret string) (accessTokenReturn string, refres
 }
 
 // CheckToken validates the given token string
-func CheckToken(tokenString string, jwtSecret string) (*CustomClaims, error) {
+func (t TokenHandler) CheckToken(tokenString string) (*CustomClaims, error) {
 	// Parse the token with claims
+	jwtSecret := t.config.Get("JWT_SECRET")
 	token, err := jwt.ParseWithClaims(tokenString, &CustomClaims{}, func(token *jwt.Token) (interface{}, error) {
 		// Ensure the signing method is what we expect
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
