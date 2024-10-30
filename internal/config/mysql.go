@@ -15,11 +15,11 @@ func ConnectDBMysql(config Config) (*sql.DB, error) {
 	dbHost := config.Get("DB_HOST")
 	dbPort := config.Get("DB_PORT")
 	dbType := config.Get("DB_TYPE")
+	dbName := config.Get("DB_NAME")
 	port, err := strconv.Atoi(dbPort)
 	if err != nil {
 		return nil, err
 	}
-	dbName := config.Get("DB_NAME")
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
 		dbUser, dbPassword, dbHost, port, dbName)
 	db, err := sql.Open(dbType, dsn)
