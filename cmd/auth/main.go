@@ -64,21 +64,25 @@ func run(config config.Config, connectDB func(config.Config) (*sql.DB, error), c
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
-
-	// Ensure db is closed only if it’s initialized
 	defer func() {
 		if db != nil {
 			db.Close()
 		}
 	}()
 
-	// Attempt to create the listener
-	listener, err := createListener()
+	// Set up the gRPC server and listener
+	grpcServer, listener, err := SetupServer(config, db, createListener)
 	if err != nil {
-		return fmt.Errorf("failed to create listener: %w", err)
+		return fmt.Errorf("failed to set up server: %w", err)
 	}
 	defer listener.Close()
 
-	// Continue with the rest of the function logic...
+	// Start serving the gRPC server
+	logrus.Info("Starting gRPC server...")
+	logrus.Infof("gRPC server started successfully on port: %s", listener.Addr().String())
+	if err := grpcServer.Serve(listener); err != nil {
+		return fmt.Errorf("failed to serve gRPC server: %w", err)
+	}
+
 	return nil
 }
