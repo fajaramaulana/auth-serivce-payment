@@ -34,6 +34,52 @@ Welcome to the **Auth Service for Payment**! 🎉 This microservice provides a r
     go run main.go
     ```
 
+## Folder Structure
+``` bash
+auth-service/
+├── cmd/
+│   └── auth/
+│       └── main.go              # Entry point for the auth service
+├── internal/
+│   ├── config/                   # Configuration files (e.g., for environment variables)
+│   │   ├── config_test.go
+│   │   ├── mysql.go
+│   │   └── config.go
+│   ├── handler/                  # HTTP/gRPC handlers
+│   │   └── auth_handler.go       # Handlers for authentication-related endpoints
+│   ├── middleware/               # Middleware functions (e.g., authentication, logging)
+│   │   └── auth_middleware.go
+│   ├── model/                    # Data models (e.g., User struct)
+│   │   └── user.go
+│   ├── repository/               # Repository pattern for database interactions
+│   │   ├── auth_repository_impl.go
+│   │   ├── auth_repository.go
+│   │   └── auth_repository_test.go
+│   ├── service/                  # Business logic and service layer
+│   │   ├── auth_service_impl.go
+│   │   ├── auth_service_test.go
+│   │   └── auth_service.go       # Logic for handling authentication
+│   └── utils/                    # Utility functions (e.g., token generation, validation)
+│       ├── global.go
+│       ├── password_utils.go
+│       ├── utils_test.go
+│       └── token.go
+├── mocks/                         # Integration tests (optional)
+│   ├── mock_config.go
+│   ├── mock_database.go
+│   ├── mock_hashpassword.go
+│   ├── mock_repository.go
+│   └── mock_token.go
+├── .env                          # Environment variables (optional)
+├── .gitignore                    
+├── coverage.html                    
+├── coverage.out                    
+├── LICENSE                    
+├── readme.md                    
+├── go.mod                        # Go module file
+└── go.sum    
+```
+
 ## 🌟 Usage
 
 This service exposes several gRPC endpoints for managing user authentication. Here's a brief overview:
