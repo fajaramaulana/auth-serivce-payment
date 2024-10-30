@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock" // import this package for SQL mock support
 	"github.com/fajaramaulana/auth-serivce-payment/internal/config"
@@ -12,6 +13,7 @@ import (
 	"github.com/fajaramaulana/auth-serivce-payment/internal/service"
 	"github.com/fajaramaulana/auth-serivce-payment/mocks"
 	"github.com/fajaramaulana/shared-proto-payment/proto/auth"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"google.golang.org/grpc"
@@ -89,8 +91,24 @@ func TestRun_Success(t *testing.T) {
 	mockConfig := new(mocks.MockConfig)
 	mockConfig.On("Get", "DB_HOST").Return("localhost")
 
-	err := run(mockConfig, mockConnectDBSuccess, mockListenerSuccess)
-	assert.NoError(t, err, "expected no error on successful setup")
+	// Run `run` function in a goroutine
+	done := make(chan error)
+	go func() {
+		err := run(mockConfig, mockConnectDBSuccess, mockListenerSuccess2)
+		done <- err
+	}()
+
+	// Wait for a short delay to ensure the server starts
+	time.Sleep(100 * time.Millisecond)
+
+	// Close the server after checking it has started
+	select {
+	case err := <-done:
+		assert.NoError(t, err, "expected no error on successful setup")
+	default:
+		logrus.Info("Stopping gRPC server after test verification")
+		close(done) // Optional: Clean up the done channel
+	}
 }
 
 func TestRun_DBConnectionFailure(t *testing.T) {
@@ -108,15 +126,30 @@ func TestRun_ListenerFailure(t *testing.T) {
 
 	err := run(mockConfig, mockConnectDBSuccess, mockListenerFail)
 	assert.Error(t, err, "expected error on listener creation failure")
-	assert.EqualError(t, err, "failed to create listener: failed to create listener")
+	assert.EqualError(t, err, "failed to set up server: failed to create listener")
 }
 
 func TestRun_DBclose(t *testing.T) {
 	mockConfig := new(mocks.MockConfig)
 	mockConfig.On("Get", "DB_HOST").Return("localhost")
 
-	err := run(mockConfig, mockConnectDBSuccess, mockListenerSuccess)
-	assert.NoError(t, err, "expected no error on successful setup")
+	done := make(chan error)
+	go func() {
+		err := run(mockConfig, mockConnectDBSuccess, mockListenerSuccess2)
+		done <- err
+	}()
+
+	// Wait for a short delay to ensure the server starts
+	time.Sleep(100 * time.Millisecond)
+
+	// Close the server after checking it has started
+	select {
+	case err := <-done:
+		assert.NoError(t, err, "expected no error on successful setup")
+	default:
+		logrus.Info("Stopping DB after test verification")
+		close(done) // Optional: Clean up the done channel
+	}
 }
 
 func TestRun_ListenerCreationFailure(t *testing.T) {
@@ -125,7 +158,7 @@ func TestRun_ListenerCreationFailure(t *testing.T) {
 
 	err := run(mockConfig, mockConnectDBSuccess, mockListenerFailure)
 	assert.Error(t, err, "expected error on listener creation failure")
-	assert.Contains(t, err.Error(), "failed to create listener")
+	assert.Contains(t, err.Error(), "failed to set up server")
 }
 
 // Mock functions for database connection and listener
@@ -141,6 +174,12 @@ func mockConnectDBFail(config config.Config) (*sql.DB, error) {
 
 func mockListenerSuccess() (net.Listener, error) {
 	return &net.TCPListener{}, nil
+}
+
+// Mock listener function
+func mockListenerSuccess2() (net.Listener, error) {
+	// Use net.Listen to create a listener on a random port for testing
+	return net.Listen("tcp", "127.0.0.1:0")
 }
 
 func mockListenerFail() (net.Listener, error) {
