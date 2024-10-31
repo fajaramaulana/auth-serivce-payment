@@ -3,21 +3,31 @@ package repository
 import (
 	"database/sql"
 
+	"github.com/fajaramaulana/auth-serivce-payment/internal/config"
 	"github.com/fajaramaulana/auth-serivce-payment/internal/model"
+	"github.com/sirupsen/logrus"
 )
 
 type UserRepositoryImpl struct {
-	db *sql.DB
+	db     *sql.DB
+	config config.Config
 }
 
-func NewUserRepository(db *sql.DB) UserRepository {
-	return &UserRepositoryImpl{db: db}
+func NewUserRepository(db *sql.DB, config config.Config) UserRepository {
+	return &UserRepositoryImpl{db: db, config: config}
 }
 
 func (r *UserRepositoryImpl) FindUserByUsername(username string) (*model.GetUserPassword, error) {
 	var user model.GetUserPassword
 	query := "SELECT id, username, email, password FROM users WHERE username = ?"
 	row := r.db.QueryRow(query, username)
+	env := r.config.Get("ENV")
+	if env != "production" {
+		logrus.WithFields(logrus.Fields{
+			"query":    query,
+			"username": username,
+		}).Info("Querying database")
+	}
 
 	if err := row.Scan(&user.ID, &user.Username, &user.Email, &user.Password); err != nil {
 		if err == sql.ErrNoRows {
@@ -33,6 +43,13 @@ func (r *UserRepositoryImpl) FindUserByEmail(email string) (*model.GetUserPasswo
 	var user model.GetUserPassword
 	query := "SELECT id, username, email, password FROM users WHERE email = ?"
 	row := r.db.QueryRow(query, email)
+	env := r.config.Get("ENV")
+	if env != "production" {
+		logrus.WithFields(logrus.Fields{
+			"query": query,
+			"email": email,
+		}).Info("Querying database")
+	}
 
 	if err := row.Scan(&user.ID, &user.Username, &user.Email, &user.Password); err != nil {
 		if err == sql.ErrNoRows {
@@ -47,6 +64,13 @@ func (r *UserRepositoryImpl) FindUserByEmail(email string) (*model.GetUserPasswo
 func (r *UserRepositoryImpl) CheckUserByEmailRegister(email string) (bool, error) {
 	query := "SELECT COUNT(*) FROM users WHERE email = ?"
 	row := r.db.QueryRow(query, email)
+	env := r.config.Get("ENV")
+	if env != "production" {
+		logrus.WithFields(logrus.Fields{
+			"query": query,
+			"email": email,
+		}).Info("Querying database")
+	}
 
 	var count int
 	if err := row.Scan(&count); err != nil {
@@ -59,6 +83,13 @@ func (r *UserRepositoryImpl) CheckUserByEmailRegister(email string) (bool, error
 func (r *UserRepositoryImpl) CheckUserByUsernameRegister(username string) (bool, error) {
 	query := "SELECT COUNT(*) FROM users WHERE username = ?"
 	row := r.db.QueryRow(query, username)
+	env := r.config.Get("ENV")
+	if env != "production" {
+		logrus.WithFields(logrus.Fields{
+			"query":    query,
+			"username": username,
+		}).Info("Querying database")
+	}
 
 	var count int
 	if err := row.Scan(&count); err != nil {
@@ -81,6 +112,14 @@ func (r *UserRepositoryImpl) CreateUser(user *model.UserRegister) (result sql.Re
 		return nil, err
 	}
 
+	env := r.config.Get("ENV")
+	if env != "production" {
+		logrus.WithFields(logrus.Fields{
+			"query":   query,
+			"payload": user,
+		}).Info("Querying database")
+	}
+
 	err = tx.Commit()
 	if err != nil {
 		return nil, err
@@ -92,7 +131,14 @@ func (r *UserRepositoryImpl) CreateUser(user *model.UserRegister) (result sql.Re
 func (r *UserRepositoryImpl) CheckRefreshToken(UserId int, refreshToken string) (bool, error) {
 	query := "SELECT COUNT(*) FROM users WHERE id = ? AND refresh_token = ?"
 	row := r.db.QueryRow(query, UserId, refreshToken)
-
+	env := r.config.Get("ENV")
+	if env != "production" {
+		logrus.WithFields(logrus.Fields{
+			"query":         query,
+			"user_id":       UserId,
+			"refresh_token": refreshToken,
+		}).Info("Querying database")
+	}
 	var count int
 	if err := row.Scan(&count); err != nil {
 		return false, err
@@ -103,11 +149,27 @@ func (r *UserRepositoryImpl) CheckRefreshToken(UserId int, refreshToken string) 
 func (r *UserRepositoryImpl) DeleteRefreshToken(UserId int, refreshToken string) error {
 	query := "DELETE FROM users WHERE id = ? AND refresh_token = ?"
 	_, err := r.db.Exec(query, UserId, refreshToken)
+	env := r.config.Get("ENV")
+	if env != "production" {
+		logrus.WithFields(logrus.Fields{
+			"query":         query,
+			"user_id":       UserId,
+			"refresh_token": refreshToken,
+		}).Info("Querying database")
+	}
 	return err
 }
 
 func (r *UserRepositoryImpl) UpdateRefreshToken(UserId int, refreshToken string) error {
 	query := "UPDATE users SET refresh_token = ? WHERE id = ?"
+	env := r.config.Get("ENV")
+	if env != "production" {
+		logrus.WithFields(logrus.Fields{
+			"query":         query,
+			"user_id":       UserId,
+			"refresh_token": refreshToken,
+		}).Info("Querying database")
+	}
 	_, err := r.db.Exec(query, refreshToken, UserId)
 	return err
 }

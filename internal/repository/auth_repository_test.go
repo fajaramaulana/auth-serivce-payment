@@ -8,14 +8,17 @@ import (
 	"github.com/fajaramaulana/auth-serivce-payment/internal/model"
 	"github.com/fajaramaulana/auth-serivce-payment/internal/repository"
 	"github.com/fajaramaulana/auth-serivce-payment/internal/utils"
+	"github.com/fajaramaulana/auth-serivce-payment/mocks"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestFindUserByUsername(t *testing.T) {
 	db, mock, _ := sqlmock.New()
 	defer db.Close()
-
-	repo := repository.NewUserRepository(db)
+	mockConfig := new(mocks.MockConfig)
+	mockConfig.On("Get", "DB_HOST").Return("localhost")
+	mockConfig.On("Get", "ENV").Return("test")
+	repo := repository.NewUserRepository(db, mockConfig)
 
 	username := "testuser"
 	expectedUser := &model.GetUserPassword{
@@ -41,8 +44,10 @@ func TestFindUserByUsername(t *testing.T) {
 func TestFindUserByUsername_notfound(t *testing.T) {
 	db, mock, _ := sqlmock.New()
 	defer db.Close()
-
-	repo := repository.NewUserRepository(db)
+	mockConfig := new(mocks.MockConfig)
+	mockConfig.On("Get", "DB_HOST").Return("localhost")
+	mockConfig.On("Get", "ENV").Return("test")
+	repo := repository.NewUserRepository(db, mockConfig)
 
 	// Username that does not exist in the database
 	username := "testuser1"
@@ -64,7 +69,10 @@ func TestFindUserByEmail(t *testing.T) {
 	db, mock, _ := sqlmock.New()
 	defer db.Close()
 
-	repo := repository.NewUserRepository(db)
+	mockConfig := new(mocks.MockConfig)
+	mockConfig.On("Get", "DB_HOST").Return("localhost")
+	mockConfig.On("Get", "ENV").Return("test")
+	repo := repository.NewUserRepository(db, mockConfig)
 
 	email := "test@example.com"
 	expectedUser := &model.GetUserPassword{
@@ -91,7 +99,10 @@ func TestFindUserByEmail_notfound(t *testing.T) {
 	db, mock, _ := sqlmock.New()
 	defer db.Close()
 
-	repo := repository.NewUserRepository(db)
+	mockConfig := new(mocks.MockConfig)
+	mockConfig.On("Get", "DB_HOST").Return("localhost")
+	mockConfig.On("Get", "ENV").Return("test")
+	repo := repository.NewUserRepository(db, mockConfig)
 
 	email := "testnotfound@mail.com"
 
@@ -112,7 +123,10 @@ func TestCheckUserByEmailRegister(t *testing.T) {
 	db, mock, _ := sqlmock.New()
 	defer db.Close()
 
-	repo := repository.NewUserRepository(db)
+	mockConfig := new(mocks.MockConfig)
+	mockConfig.On("Get", "DB_HOST").Return("localhost")
+	mockConfig.On("Get", "ENV").Return("test")
+	repo := repository.NewUserRepository(db, mockConfig)
 
 	email := "test@example.com"
 
@@ -132,7 +146,11 @@ func TestCheckUserByUsernameRegister(t *testing.T) {
 	db, mock, _ := sqlmock.New()
 	defer db.Close()
 
-	repo := repository.NewUserRepository(db)
+	mockConfig := new(mocks.MockConfig)
+	mockConfig.On("Get", "DB_HOST").Return("localhost")
+	mockConfig.On("Get", "ENV").Return("test")
+
+	repo := repository.NewUserRepository(db, mockConfig)
 
 	username := "testuser"
 
@@ -151,7 +169,11 @@ func TestCreateUser(t *testing.T) {
 	db, mock, _ := sqlmock.New()
 	defer db.Close()
 
-	repo := repository.NewUserRepository(db)
+	mockConfig := new(mocks.MockConfig)
+	mockConfig.On("Get", "DB_HOST").Return("localhost")
+	mockConfig.On("Get", "ENV").Return("test")
+
+	repo := repository.NewUserRepository(db, mockConfig)
 
 	user := &model.UserRegister{
 		Username:     "newuser",
@@ -186,7 +208,10 @@ func TestCheckRefreshToken(t *testing.T) {
 	db, mock, _ := sqlmock.New()
 	defer db.Close()
 
-	repo := repository.NewUserRepository(db)
+	mockConfig := new(mocks.MockConfig)
+	mockConfig.On("Get", "DB_HOST").Return("localhost")
+	mockConfig.On("Get", "ENV").Return("test")
+	repo := repository.NewUserRepository(db, mockConfig)
 
 	userID := 1
 	refreshToken := "sometoken"
@@ -207,7 +232,10 @@ func TestDeleteRefreshToken(t *testing.T) {
 	db, mock, _ := sqlmock.New()
 	defer db.Close()
 
-	repo := repository.NewUserRepository(db)
+	mockConfig := new(mocks.MockConfig)
+	mockConfig.On("Get", "DB_HOST").Return("localhost")
+	mockConfig.On("Get", "ENV").Return("test")
+	repo := repository.NewUserRepository(db, mockConfig)
 
 	userID := 1
 	refreshToken := "sometoken"
@@ -226,7 +254,10 @@ func TestUpdateRefreshToken(t *testing.T) {
 	db, mock, _ := sqlmock.New()
 	defer db.Close()
 
-	repo := repository.NewUserRepository(db)
+	mockConfig := new(mocks.MockConfig)
+	mockConfig.On("Get", "DB_HOST").Return("localhost")
+	mockConfig.On("Get", "ENV").Return("test")
+	repo := repository.NewUserRepository(db, mockConfig)
 
 	userID := 1
 	refreshToken := "newtoken"

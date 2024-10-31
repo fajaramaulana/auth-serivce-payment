@@ -55,15 +55,15 @@
 			<div id="nav">
 				<select id="files">
 				
-				<option value="file0">github.com/fajaramaulana/auth-serivce-payment/cmd/auth/main.go (79.4%)</option>
+				<option value="file0">github.com/fajaramaulana/auth-serivce-payment/cmd/auth/main.go (78.9%)</option>
 				
 				<option value="file1">github.com/fajaramaulana/auth-serivce-payment/internal/config/config.go (81.8%)</option>
 				
 				<option value="file2">github.com/fajaramaulana/auth-serivce-payment/internal/config/mysql.go (92.9%)</option>
 				
-				<option value="file3">github.com/fajaramaulana/auth-serivce-payment/internal/repository/auth_repository_impl.go (83.0%)</option>
+				<option value="file3">github.com/fajaramaulana/auth-serivce-payment/internal/repository/auth_repository_impl.go (83.9%)</option>
 				
-				<option value="file4">github.com/fajaramaulana/auth-serivce-payment/internal/service/auth_service_impl.go (84.8%)</option>
+				<option value="file4">github.com/fajaramaulana/auth-serivce-payment/internal/service/auth_service_impl.go (85.2%)</option>
 				
 				<option value="file5">github.com/fajaramaulana/auth-serivce-payment/internal/utils/global.go (100.0%)</option>
 				
@@ -71,7 +71,7 @@
 				
 				<option value="file7">github.com/fajaramaulana/auth-serivce-payment/internal/utils/token.go (78.3%)</option>
 				
-				<option value="file8">github.com/fajaramaulana/auth-serivce-payment/mocks/mock_config.go (0.0%)</option>
+				<option value="file8">github.com/fajaramaulana/auth-serivce-payment/mocks/mock_config.go (100.0%)</option>
 				
 				<option value="file9">github.com/fajaramaulana/auth-serivce-payment/mocks/mock_database.go (0.0%)</option>
 				
@@ -98,6 +98,7 @@
 import (
         "database/sql"
         "fmt"
+        "io"
         "net"
         "os"
 
@@ -106,6 +107,7 @@ import (
         "github.com/fajaramaulana/auth-serivce-payment/internal/service"
         "github.com/fajaramaulana/auth-serivce-payment/internal/utils"
         "github.com/fajaramaulana/shared-proto-payment/proto/auth"
+        "github.com/natefinch/lumberjack"
         "github.com/sirupsen/logrus"
         "google.golang.org/grpc"
         "google.golang.org/grpc/reflection"
@@ -116,15 +118,34 @@ var ListenerFunc = func() (net.Listener, error) <span class="cov0" title="0">{
 }</span>
 
 func init() <span class="cov8" title="1">{
-        // Initialize Logrus logger
-        log := logrus.New()
-        log.Out = os.Stdout
-        log.SetFormatter(&amp;logrus.JSONFormatter{}) // Optional: set JSON formatting for structured logs
-}</span>
+        // Create the logs directory if it doesn't exist
+        if _, err := os.Stat("logs"); os.IsNotExist(err) </span><span class="cov0" title="0">{
+                os.Mkdir("logs", 0755)
+        }</span>
+
+        // Set up Lumberjack logger for log rotation with JSON format
+        <span class="cov8" title="1">fileLogger := &amp;lumberjack.Logger{
+                Filename:   "logs/auth-service-payment.log",
+                MaxSize:    10,   // Maximum size in megabytes before rotating
+                MaxBackups: 3,    // Maximum number of old log files to keep
+                MaxAge:     28,   // Maximum number of days to retain a log file
+                Compress:   true, // Compress old log files
+        }
+
+        // Create a MultiWriter to write to both stdout and file
+        multiWriter := io.MultiWriter(os.Stdout, fileLogger)
+
+        // Configure the global logrus logger to write to both outputs
+        logrus.SetOutput(multiWriter)
+        logrus.SetLevel(logrus.InfoLevel)
+
+        // Set JSON format for log files and plain text for terminal
+        logrus.SetFormatter(&amp;logrus.JSONFormatter{})</span>
+}
 
 func SetupServer(configuration config.Config, db *sql.DB, ListenerFunc func() (net.Listener, error)) (*grpc.Server, net.Listener, error) <span class="cov8" title="1">{
         // Initialize repository and service handler
-        authRepo := repository.NewUserRepository(db)
+        authRepo := repository.NewUserRepository(db, configuration)
         passwordHasher := utils.NewPasswordHasher()
         tokenHandler := utils.NewTokenHandler(configuration)
         authService := service.NewAuthService(authRepo, configuration, passwordHasher, tokenHandler)
@@ -266,23 +287,33 @@ func ConnectDBMysql(config Config) (*sql.DB, error) <span class="cov8" title="1"
 import (
         "database/sql"
 
+        "github.com/fajaramaulana/auth-serivce-payment/internal/config"
         "github.com/fajaramaulana/auth-serivce-payment/internal/model"
+        "github.com/sirupsen/logrus"
 )
 
 type UserRepositoryImpl struct {
-        db *sql.DB
+        db     *sql.DB
+        config config.Config
 }
 
-func NewUserRepository(db *sql.DB) UserRepository <span class="cov8" title="1">{
-        return &amp;UserRepositoryImpl{db: db}
+func NewUserRepository(db *sql.DB, config config.Config) UserRepository <span class="cov8" title="1">{
+        return &amp;UserRepositoryImpl{db: db, config: config}
 }</span>
 
 func (r *UserRepositoryImpl) FindUserByUsername(username string) (*model.GetUserPassword, error) <span class="cov8" title="1">{
         var user model.GetUserPassword
         query := "SELECT id, username, email, password FROM users WHERE username = ?"
         row := r.db.QueryRow(query, username)
+        env := r.config.Get("ENV")
+        if env != "production" </span><span class="cov8" title="1">{
+                logrus.WithFields(logrus.Fields{
+                        "query":    query,
+                        "username": username,
+                }).Info("Querying database")
+        }</span>
 
-        if err := row.Scan(&amp;user.ID, &amp;user.Username, &amp;user.Email, &amp;user.Password); err != nil </span><span class="cov8" title="1">{
+        <span class="cov8" title="1">if err := row.Scan(&amp;user.ID, &amp;user.Username, &amp;user.Email, &amp;user.Password); err != nil </span><span class="cov8" title="1">{
                 if err == sql.ErrNoRows </span><span class="cov8" title="1">{
                         return nil, nil // User not found
                 }</span>
@@ -417,7 +448,7 @@ func (s *AuthServiceImpl) LoginUser(ctx context.Context, req *auth.LoginRequest)
         // Find user by username
         user, err := s.repo.FindUserByUsername(req.GetUsername())
         if err != nil </span><span class="cov8" title="1">{
-                logrus.Errorf("Error finding user: %v", err)
+                logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error finding user: %v", err)
                 return &amp;auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Invalid credentials", AccessToken: "", RefreshToken: ""}, nil
         }</span>
 
@@ -434,17 +465,17 @@ func (s *AuthServiceImpl) LoginUser(ctx context.Context, req *auth.LoginRequest)
 
         <span class="cov8" title="1">accessToken, refreshToken, err := s.token.CreateToken(user.ID)
         if err != nil </span><span class="cov8" title="1">{
-                logrus.Errorf("Error creating token: %v", err)
+                logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error creating token: %v", err)
                 return &amp;auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, nil
         }</span>
 
         <span class="cov8" title="1">err = s.repo.UpdateRefreshToken(user.ID, refreshToken)
         if err != nil </span><span class="cov0" title="0">{
-                logrus.Errorf("Error updating refresh token: %v", err)
+                logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error updating refresh token: %v", err)
                 return &amp;auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, nil
         }</span>
 
-        <span class="cov8" title="1">logrus.Infof("User %s logged in successfully", req.GetUsername())
+        <span class="cov8" title="1">logrus.WithFields(logrus.Fields{"request": req}).Infof("User %s logged in successfully", req.GetUsername())
         return &amp;auth.LoginResponse{Status: http.StatusOK, Message: "Login successful", AccessToken: accessToken, RefreshToken: refreshToken}, nil</span>
 }
 
@@ -453,7 +484,7 @@ func (s *AuthServiceImpl) RegisterUser(ctx context.Context, req *auth.RegisterRe
         // Check if user already exists
         checkUsername, err := s.repo.CheckUserByUsernameRegister(req.GetUsername())
         if err != nil </span><span class="cov8" title="1">{
-                logrus.Errorf("Error finding user: %v", err)
+                logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error finding user: %v", err)
                 return nil, fmt.Errorf("internal server error")
         }</span>
 
@@ -464,7 +495,7 @@ func (s *AuthServiceImpl) RegisterUser(ctx context.Context, req *auth.RegisterRe
 
         <span class="cov8" title="1">checkEmail, err := s.repo.CheckUserByEmailRegister(req.GetEmail())
         if err != nil </span><span class="cov8" title="1">{
-                logrus.Errorf("Error finding email: %v", err)
+                logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error finding email: %v", err)
                 return nil, fmt.Errorf("internal server error")
         }</span>
 
@@ -475,14 +506,14 @@ func (s *AuthServiceImpl) RegisterUser(ctx context.Context, req *auth.RegisterRe
 
         <span class="cov8" title="1">hashedPassword, err := s.hasher.Generate([]byte(req.GetPassword()), bcrypt.DefaultCost)
         if err != nil </span><span class="cov8" title="1">{
-                logrus.Errorf("Error hashing password: %v", err)
+                logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error hashing password: %v", err)
                 return nil, fmt.Errorf("internal server error") // Early return on error
         }</span>
 
         // covert req.GetDob() to time.Time
         <span class="cov8" title="1">dob, err := time.Parse("2006-01-02", req.GetDob())
         if err != nil </span><span class="cov8" title="1">{
-                logrus.Errorf("Error parsing dob: %v", err)
+                logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error parsing dob: %v", err)
                 return nil, fmt.Errorf("internal server error")
         }</span>
 
@@ -499,12 +530,12 @@ func (s *AuthServiceImpl) RegisterUser(ctx context.Context, req *auth.RegisterRe
         }
         res, err := s.repo.CreateUser(user)
         if err != nil </span><span class="cov8" title="1">{
-                logrus.Errorf("Error creating user: %v", err)
+                logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error creating user: %v", err)
                 return nil, fmt.Errorf("internal server error")
         }</span>
         <span class="cov8" title="1">lastId, err := res.LastInsertId()
         if err != nil </span><span class="cov0" title="0">{
-                logrus.Errorf("Error getting last insert ID: %v", err)
+                logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error getting last insert ID: %v", err)
                 return nil, fmt.Errorf("internal server error")
         }</span>
 
@@ -512,17 +543,17 @@ func (s *AuthServiceImpl) RegisterUser(ctx context.Context, req *auth.RegisterRe
         <span class="cov8" title="1">userId := int(lastId)
         accessToken, refreshToken, err := s.token.CreateToken(userId)
         if err != nil </span><span class="cov0" title="0">{
-                logrus.Errorf("Error creating token: %v", err)
+                logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error creating token: %v", err)
                 return nil, fmt.Errorf("internal server error")
         }</span>
 
         <span class="cov8" title="1">err = s.repo.UpdateRefreshToken(userId, refreshToken)
         if err != nil </span><span class="cov8" title="1">{
-                logrus.Errorf("Error updating refresh token: %v", err)
+                logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error updating refresh token: %v", err)
                 return nil, fmt.Errorf("internal server error")
         }</span>
 
-        <span class="cov8" title="1">logrus.Infof("User %s registered successfully", req.GetUsername())
+        <span class="cov8" title="1">logrus.WithFields(logrus.Fields{"request": req}).Infof("User %s registered successfully", req.GetUsername())
 
         return &amp;auth.RegisterResponse{Status: http.StatusOK, Message: "Registration successful", AccessToken: accessToken, RefreshToken: refreshToken}, nil</span>
 }
@@ -532,20 +563,22 @@ func (s *AuthServiceImpl) RefreshToken(ctx context.Context, req *auth.RefreshTok
 
         userIdResult, err := s.token.CheckToken(req.GetRefreshToken())
         if err != nil </span><span class="cov0" title="0">{
-                logrus.Errorf("Error checking token: %v", err)
+                logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error checking token: %v", err)
                 return nil, status.Errorf(codes.Internal, "internal server error")
         }</span>
 
         // Add a call to `CheckRefreshToken` here if needed.
         <span class="cov8" title="1">isTokenValid, err := s.repo.CheckRefreshToken(userIdResult.UserID, req.GetRefreshToken())
+        fmt.Printf("%# v\n", isTokenValid)
+        fmt.Printf("%# v\n", err)
         if err != nil || !isTokenValid </span><span class="cov0" title="0">{
-                logrus.Errorf("Error validating refresh token: %v", err)
+                logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error validating refresh token: %v", err)
                 return nil, status.Errorf(codes.Internal, "refresh token invalid or expired")
         }</span>
 
         <span class="cov8" title="1">newAccessToken, _, err := s.token.CreateToken(userIdResult.UserID)
         if err != nil </span><span class="cov0" title="0">{
-                logrus.Errorf("Error creating new access token: %v", err)
+                logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error creating new access token: %v", err)
                 return nil, status.Errorf(codes.Internal, "internal server error")
         }</span>
 
@@ -700,7 +733,7 @@ type MockConfig struct {
 }
 
 // Get is a mock method for config.Config's Get method
-func (m *MockConfig) Get(key string) string <span class="cov0" title="0">{
+func (m *MockConfig) Get(key string) string <span class="cov8" title="1">{
         args := m.Called(key)
         return args.String(0)
 }</span>

@@ -39,7 +39,7 @@ func (s *AuthServiceImpl) LoginUser(ctx context.Context, req *auth.LoginRequest)
 	// Find user by username
 	user, err := s.repo.FindUserByUsername(req.GetUsername())
 	if err != nil {
-		logrus.Errorf("Error finding user: %v", err)
+		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error finding user: %v", err)
 		return &auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Invalid credentials", AccessToken: "", RefreshToken: ""}, nil
 	}
 
@@ -56,17 +56,17 @@ func (s *AuthServiceImpl) LoginUser(ctx context.Context, req *auth.LoginRequest)
 
 	accessToken, refreshToken, err := s.token.CreateToken(user.ID)
 	if err != nil {
-		logrus.Errorf("Error creating token: %v", err)
+		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error creating token: %v", err)
 		return &auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, nil
 	}
 
 	err = s.repo.UpdateRefreshToken(user.ID, refreshToken)
 	if err != nil {
-		logrus.Errorf("Error updating refresh token: %v", err)
+		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error updating refresh token: %v", err)
 		return &auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, nil
 	}
 
-	logrus.Infof("User %s logged in successfully", req.GetUsername())
+	logrus.WithFields(logrus.Fields{"request": req}).Infof("User %s logged in successfully", req.GetUsername())
 	return &auth.LoginResponse{Status: http.StatusOK, Message: "Login successful", AccessToken: accessToken, RefreshToken: refreshToken}, nil
 }
 
@@ -75,7 +75,7 @@ func (s *AuthServiceImpl) RegisterUser(ctx context.Context, req *auth.RegisterRe
 	// Check if user already exists
 	checkUsername, err := s.repo.CheckUserByUsernameRegister(req.GetUsername())
 	if err != nil {
-		logrus.Errorf("Error finding user: %v", err)
+		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error finding user: %v", err)
 		return nil, fmt.Errorf("internal server error")
 	}
 
@@ -86,7 +86,7 @@ func (s *AuthServiceImpl) RegisterUser(ctx context.Context, req *auth.RegisterRe
 
 	checkEmail, err := s.repo.CheckUserByEmailRegister(req.GetEmail())
 	if err != nil {
-		logrus.Errorf("Error finding email: %v", err)
+		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error finding email: %v", err)
 		return nil, fmt.Errorf("internal server error")
 	}
 
@@ -97,14 +97,14 @@ func (s *AuthServiceImpl) RegisterUser(ctx context.Context, req *auth.RegisterRe
 
 	hashedPassword, err := s.hasher.Generate([]byte(req.GetPassword()), bcrypt.DefaultCost)
 	if err != nil {
-		logrus.Errorf("Error hashing password: %v", err)
+		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error hashing password: %v", err)
 		return nil, fmt.Errorf("internal server error") // Early return on error
 	}
 
 	// covert req.GetDob() to time.Time
 	dob, err := time.Parse("2006-01-02", req.GetDob())
 	if err != nil {
-		logrus.Errorf("Error parsing dob: %v", err)
+		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error parsing dob: %v", err)
 		return nil, fmt.Errorf("internal server error")
 	}
 
@@ -121,12 +121,12 @@ func (s *AuthServiceImpl) RegisterUser(ctx context.Context, req *auth.RegisterRe
 	}
 	res, err := s.repo.CreateUser(user)
 	if err != nil {
-		logrus.Errorf("Error creating user: %v", err)
+		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error creating user: %v", err)
 		return nil, fmt.Errorf("internal server error")
 	}
 	lastId, err := res.LastInsertId()
 	if err != nil {
-		logrus.Errorf("Error getting last insert ID: %v", err)
+		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error getting last insert ID: %v", err)
 		return nil, fmt.Errorf("internal server error")
 	}
 
@@ -134,17 +134,17 @@ func (s *AuthServiceImpl) RegisterUser(ctx context.Context, req *auth.RegisterRe
 	userId := int(lastId)
 	accessToken, refreshToken, err := s.token.CreateToken(userId)
 	if err != nil {
-		logrus.Errorf("Error creating token: %v", err)
+		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error creating token: %v", err)
 		return nil, fmt.Errorf("internal server error")
 	}
 
 	err = s.repo.UpdateRefreshToken(userId, refreshToken)
 	if err != nil {
-		logrus.Errorf("Error updating refresh token: %v", err)
+		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error updating refresh token: %v", err)
 		return nil, fmt.Errorf("internal server error")
 	}
 
-	logrus.Infof("User %s registered successfully", req.GetUsername())
+	logrus.WithFields(logrus.Fields{"request": req}).Infof("User %s registered successfully", req.GetUsername())
 
 	return &auth.RegisterResponse{Status: http.StatusOK, Message: "Registration successful", AccessToken: accessToken, RefreshToken: refreshToken}, nil
 }
@@ -154,20 +154,24 @@ func (s *AuthServiceImpl) RefreshToken(ctx context.Context, req *auth.RefreshTok
 
 	userIdResult, err := s.token.CheckToken(req.GetRefreshToken())
 	if err != nil {
-		logrus.Errorf("Error checking token: %v", err)
+		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error checking token: %v", err)
 		return nil, status.Errorf(codes.Internal, "internal server error")
 	}
 
+	fmt.Printf("%# v\n", userIdResult)
+
 	// Add a call to `CheckRefreshToken` here if needed.
 	isTokenValid, err := s.repo.CheckRefreshToken(userIdResult.UserID, req.GetRefreshToken())
+	fmt.Printf("%# v\n", isTokenValid)
+	fmt.Printf("%# v\n", err)
 	if err != nil || !isTokenValid {
-		logrus.Errorf("Error validating refresh token: %v", err)
+		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error validating refresh token: %v", err)
 		return nil, status.Errorf(codes.Internal, "refresh token invalid or expired")
 	}
 
 	newAccessToken, _, err := s.token.CreateToken(userIdResult.UserID)
 	if err != nil {
-		logrus.Errorf("Error creating new access token: %v", err)
+		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error creating new access token: %v", err)
 		return nil, status.Errorf(codes.Internal, "internal server error")
 	}
 

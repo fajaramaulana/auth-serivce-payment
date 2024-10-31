@@ -59,6 +59,7 @@ func TestSetupServer_ListenerError(t *testing.T) {
 func TestMainFunction(t *testing.T) {
 	mockConfig := new(mocks.MockConfig)
 	mockConfig.On("Get", "DB_HOST").Return("localhost")
+	mockConfig.On("Get", "ENV").Return("test")
 	mockPassHash := new(mocks.MockPasswordHasher)
 
 	mockToken := new(mocks.MockTokenHandler)
@@ -66,7 +67,7 @@ func TestMainFunction(t *testing.T) {
 	mockDB := new(sql.DB) // Substitute with a real mock DB if available
 
 	// Mock repository and service
-	authRepo := repository.NewUserRepository(mockDB)
+	authRepo := repository.NewUserRepository(mockDB, mockConfig)
 	authService := service.NewAuthService(authRepo, mockConfig, mockPassHash, mockToken)
 
 	// Create the gRPC server and listener

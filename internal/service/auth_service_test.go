@@ -28,11 +28,12 @@ func TestAuthServiceImpl_LoginUser(t *testing.T) {
 	}
 	defer db.Close()
 
-	mockRepo := repository.NewUserRepository(db)
 	mockConfig := new(mocks.MockConfig)
 	mockPassHash := new(mocks.MockPasswordHasher)
 	mockToken := new(mocks.MockTokenHandler)
 	mockConfig.On("Get", "JWT_SECRET").Return("secret")
+	mockConfig.On("Get", "ENV").Return("test")
+	mockRepo := repository.NewUserRepository(db, mockConfig)
 
 	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken)
 
@@ -78,11 +79,12 @@ func TestAuthServiceImpl_LoginUser_ErrorCases(t *testing.T) {
 	}
 	defer db.Close()
 
-	mockRepo := repository.NewUserRepository(db)
 	mockConfig := new(mocks.MockConfig)
 	mockPassHash := new(mocks.MockPasswordHasher)
 	mockToken := new(mocks.MockTokenHandler)
 	mockConfig.On("Get", "JWT_SECRET").Return("secret")
+	mockConfig.On("Get", "ENV").Return("test")
+	mockRepo := repository.NewUserRepository(db, mockConfig)
 	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken)
 
 	username := "testuser1"
@@ -107,11 +109,12 @@ func TestAuthServiceImpl_LoginUser_UserNotFound(t *testing.T) {
 	}
 	defer db.Close()
 
-	mockRepo := repository.NewUserRepository(db)
 	mockConfig := new(mocks.MockConfig)
 	mockPassHash := new(mocks.MockPasswordHasher)
 	mockToken := new(mocks.MockTokenHandler)
 	mockConfig.On("Get", "JWT_SECRET").Return("secret")
+	mockConfig.On("Get", "ENV").Return("test")
+	mockRepo := repository.NewUserRepository(db, mockConfig)
 	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken)
 
 	// Scenario: User Not Found
@@ -146,12 +149,13 @@ func TestAuthServiceImpl_LoginUser_PasswordMismatch(t *testing.T) {
 	}
 	defer db.Close()
 
-	mockRepo := repository.NewUserRepository(db)
 	mockConfig := new(mocks.MockConfig)
 	mockPassHash := new(mocks.MockPasswordHasher)
 	mockToken := new(mocks.MockTokenHandler)
 
 	mockConfig.On("Get", "JWT_SECRET").Return("secret")
+	mockConfig.On("Get", "ENV").Return("test")
+	mockRepo := repository.NewUserRepository(db, mockConfig)
 	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken)
 
 	// Prepare the hashed password
@@ -190,12 +194,14 @@ func TestAuthServiceImpl_LoginUser_TokenCreationError(t *testing.T) {
 	}
 	defer db.Close()
 
-	mockRepo := repository.NewUserRepository(db)
 	mockConfig := new(mocks.MockConfig)
 	mockPassHash := new(mocks.MockPasswordHasher)
 	mockToken := new(mocks.MockTokenHandler)
 
 	mockConfig.On("Get", "JWT_SECRET").Return("secret")
+	mockConfig.On("Get", "ENV").Return("test")
+	mockRepo := repository.NewUserRepository(db, mockConfig)
+
 	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken)
 
 	// Prepare the hashed password
@@ -237,12 +243,14 @@ func TestAuthServiceImpl_RegisterUser(t *testing.T) {
 	}
 	defer db.Close()
 
-	mockRepo := repository.NewUserRepository(db)
 	mockConfig := new(mocks.MockConfig)
 	mockPassHash := new(mocks.MockPasswordHasher)
 	mockToken := new(mocks.MockTokenHandler)
 
 	mockConfig.On("Get", "JWT_SECRET").Return("secret")
+	mockConfig.On("Get", "ENV").Return("test")
+	mockRepo := repository.NewUserRepository(db, mockConfig)
+
 	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken)
 
 	username := "testuser"
@@ -571,11 +579,14 @@ func TestAuthServiceImpl_RegisterUser_ErrorCases(t *testing.T) {
 			}
 			defer db.Close()
 
-			mockRepo := repository.NewUserRepository(db)
 			mockConfig := new(mocks.MockConfig)
 			mockPassHash := new(mocks.MockPasswordHasher)
 			mockToken := new(mocks.MockTokenHandler)
+
 			mockConfig.On("Get", "JWT_SECRET").Return("secret")
+			mockConfig.On("Get", "ENV").Return("test")
+			mockRepo := repository.NewUserRepository(db, mockConfig)
+
 			service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken)
 
 			tt.setupSqlMock(mockDb)
