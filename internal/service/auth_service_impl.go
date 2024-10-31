@@ -204,12 +204,8 @@ func (s *AuthServiceImpl) RefreshToken(ctx context.Context, req *auth.RefreshTok
 		return nil, status.Errorf(codes.Internal, "internal server error")
 	}
 
-	fmt.Printf("%# v\n", userIdResult)
-
 	// Add a call to `CheckRefreshToken` here if needed.
 	isTokenValid, err := s.repo.CheckRefreshToken(userIdResult.UserID, req.GetRefreshToken())
-	fmt.Printf("%# v\n", isTokenValid)
-	fmt.Printf("%# v\n", err)
 	if err != nil || !isTokenValid {
 		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error validating refresh token: %v", err)
 		return nil, status.Errorf(codes.Internal, "refresh token invalid or expired")
