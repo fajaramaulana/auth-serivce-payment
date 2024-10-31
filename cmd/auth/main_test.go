@@ -12,6 +12,7 @@ import (
 	"github.com/fajaramaulana/auth-serivce-payment/internal/repository"
 	"github.com/fajaramaulana/auth-serivce-payment/internal/service"
 	"github.com/fajaramaulana/auth-serivce-payment/mocks"
+	mockGrpc "github.com/fajaramaulana/shared-proto-payment/mocks"
 	"github.com/fajaramaulana/shared-proto-payment/proto/auth"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -22,16 +23,18 @@ import (
 func TestSetupServer(t *testing.T) {
 	mockConfig := new(mocks.MockConfig)
 	mockConfig.On("Get", "DB_HOST").Return("localhost")
+	mockConfig.On("Get", "NOTIFICATION_TARGET").Return("localhosttarget")
 	mockDB := new(sql.DB) // Create a new mock DB (or use a real connection if necessary)
 
 	listenerFunc := func() (net.Listener, error) {
 		return net.Listen("tcp", ":50051")
 	}
 	// Test SetupServer
-	grpcServer, listener, err := SetupServer(mockConfig, mockDB, listenerFunc)
+	grpcServer, grpcClient, listener, err := SetupServer(mockConfig, mockDB, listenerFunc)
 	assert.NoError(t, err, "expected no error from SetupServer")
-	assert.NotNil(t, grpcServer, "expected grpcServer to be initialized")
 	assert.NotNil(t, listener, "expected listener to be initialized")
+	assert.NotNil(t, grpcClient, "expected grpcClient to be initialized")
+	assert.NotNil(t, grpcServer, "expected grpcServer to be initialized")
 
 	// Close the server and listener at the end of the test
 	grpcServer.Stop()
@@ -41,6 +44,7 @@ func TestSetupServer(t *testing.T) {
 func TestSetupServer_ListenerError(t *testing.T) {
 	mockConfig := new(mocks.MockConfig)
 	mockConfig.On("Get", "DB_HOST").Return("localhost")
+	mockConfig.On("Get", "NOTIFICATION_TARGET").Return("localhosttarget")
 
 	mockDB := new(sql.DB) // Substitute with a real mock DB if available
 
@@ -49,9 +53,10 @@ func TestSetupServer_ListenerError(t *testing.T) {
 		return nil, errors.New("failed to create listener")
 	}
 
-	grpcServer, listener, err := SetupServer(mockConfig, mockDB, listenerFunc)
+	grpcServer, grpcClient, listener, err := SetupServer(mockConfig, mockDB, listenerFunc)
 	assert.Error(t, err, "expected error when listener creation fails")
 	assert.Nil(t, grpcServer, "expected grpcServer to be nil on error")
+	assert.Nil(t, grpcClient, "expected listener to be nil on error")
 	assert.Nil(t, listener, "expected listener to be nil on error")
 }
 
@@ -59,16 +64,15 @@ func TestSetupServer_ListenerError(t *testing.T) {
 func TestMainFunction(t *testing.T) {
 	mockConfig := new(mocks.MockConfig)
 	mockConfig.On("Get", "DB_HOST").Return("localhost")
+	mockConfig.On("Get", "NOTIFICATION_TARGET").Return("localhosttarget")
 	mockConfig.On("Get", "ENV").Return("test")
 	mockPassHash := new(mocks.MockPasswordHasher)
-
 	mockToken := new(mocks.MockTokenHandler)
 
 	mockDB := new(sql.DB) // Substitute with a real mock DB if available
-
-	// Mock repository and service
 	authRepo := repository.NewUserRepository(mockDB, mockConfig)
-	authService := service.NewAuthService(authRepo, mockConfig, mockPassHash, mockToken)
+	mockNotifClient := new(mockGrpc.NotificationServiceClient)
+	authService := service.NewAuthService(authRepo, mockConfig, mockPassHash, mockToken, mockNotifClient)
 
 	// Create the gRPC server and listener
 	grpcServer := grpc.NewServer()
@@ -77,20 +81,31 @@ func TestMainFunction(t *testing.T) {
 	listener, err := net.Listen("tcp", ":50051")
 	assert.NoError(t, err, "expected no error from net.Listen")
 
+	// Use a channel to signal when to stop the server
+	done := make(chan struct{})
 	go func() {
+		defer close(done) // Close the channel when done
 		err := grpcServer.Serve(listener)
 		assert.NoError(t, err, "expected no error from grpcServer.Serve")
 	}()
 
-	// Close the server and listener after test
-	defer grpcServer.Stop()
-	defer listener.Close()
+	// Wait for a short period to ensure the server is up and running
+	time.Sleep(time.Millisecond * 100)
+
+	// Your test logic goes here, e.g., making a request to the gRPC server
+	// ...
+
+	// Clean up resources after test
+	grpcServer.Stop() // Stop the server
+	<-done            // Wait for the goroutine to finish
+	listener.Close()  // Close the listener
 }
 
 // Test cases
 func TestRun_Success(t *testing.T) {
 	mockConfig := new(mocks.MockConfig)
 	mockConfig.On("Get", "DB_HOST").Return("localhost")
+	mockConfig.On("Get", "NOTIFICATION_TARGET").Return("localhosttarget")
 
 	// Run `run` function in a goroutine
 	done := make(chan error)
@@ -115,6 +130,7 @@ func TestRun_Success(t *testing.T) {
 func TestRun_DBConnectionFailure(t *testing.T) {
 	mockConfig := new(mocks.MockConfig)
 	mockConfig.On("Get", "DB_HOST").Return("localhost")
+	mockConfig.On("Get", "NOTIFICATION_TARGET").Return("localhosttarget")
 
 	err := run(mockConfig, mockConnectDBFail, mockListenerSuccess)
 	assert.Error(t, err, "expected error on database connection failure")
@@ -124,6 +140,7 @@ func TestRun_DBConnectionFailure(t *testing.T) {
 func TestRun_ListenerFailure(t *testing.T) {
 	mockConfig := new(mocks.MockConfig)
 	mockConfig.On("Get", "DB_HOST").Return("localhost")
+	mockConfig.On("Get", "NOTIFICATION_TARGET").Return("localhosttarget")
 
 	err := run(mockConfig, mockConnectDBSuccess, mockListenerFail)
 	assert.Error(t, err, "expected error on listener creation failure")
@@ -133,6 +150,7 @@ func TestRun_ListenerFailure(t *testing.T) {
 func TestRun_DBclose(t *testing.T) {
 	mockConfig := new(mocks.MockConfig)
 	mockConfig.On("Get", "DB_HOST").Return("localhost")
+	mockConfig.On("Get", "NOTIFICATION_TARGET").Return("localhosttarget")
 
 	done := make(chan error)
 	go func() {

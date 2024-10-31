@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"github.com/fajaramaulana/auth-serivce-payment/internal/service"
 	"github.com/fajaramaulana/auth-serivce-payment/internal/utils"
 	"github.com/fajaramaulana/shared-proto-payment/proto/auth"
+	pb "github.com/fajaramaulana/shared-proto-payment/proto/notification"
 	"github.com/natefinch/lumberjack"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
@@ -48,12 +50,34 @@ func init() {
 	logrus.SetFormatter(&logrus.JSONFormatter{})
 }
 
-func SetupServer(configuration config.Config, db *sql.DB, ListenerFunc func() (net.Listener, error)) (*grpc.Server, net.Listener, error) {
+func SetupServer(configuration config.Config, db *sql.DB, ListenerFunc func() (net.Listener, error)) (*grpc.Server, *grpc.ClientConn, net.Listener, error) {
 	// Initialize repository and service handler
 	authRepo := repository.NewUserRepository(db, configuration)
 	passwordHasher := utils.NewPasswordHasher()
 	tokenHandler := utils.NewTokenHandler(configuration)
-	authService := service.NewAuthService(authRepo, configuration, passwordHasher, tokenHandler)
+
+	notificationTarget := configuration.Get("NOTIFICATION_TARGET")
+
+	// Setup for Notification Service client
+	// Setup for Notification Service client
+	notificationConn, err := grpc.NewClient(notificationTarget, grpc.WithInsecure(), grpc.WithBlock(),
+		grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
+			d := net.Dialer{}
+			logrus.Infof("Dialing to %s", addr)
+			return d.DialContext(ctx, "tcp", addr)
+		}))
+
+	if err != nil {
+		// Handle connection error
+		return nil, nil, nil, err
+	}
+
+	// Create NotificationServiceClient
+	notificationClient := pb.NewNotificationServiceClient(notificationConn)
+
+	// Defer closing the connection later in the lifecycle of the service
+
+	authService := service.NewAuthService(authRepo, configuration, passwordHasher, tokenHandler, notificationClient)
 
 	// Initialize gRPC server
 	grpcServer := grpc.NewServer()
@@ -65,10 +89,10 @@ func SetupServer(configuration config.Config, db *sql.DB, ListenerFunc func() (n
 	// Set up listener
 	listener, err := ListenerFunc()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
-	return grpcServer, listener, nil
+	return grpcServer, notificationConn, listener, nil
 }
 
 func main() {
@@ -92,11 +116,17 @@ func run(config config.Config, connectDB func(config.Config) (*sql.DB, error), c
 	}()
 
 	// Set up the gRPC server and listener
-	grpcServer, listener, err := SetupServer(config, db, createListener)
+	grpcServer, grpcClient, listener, err := SetupServer(config, db, createListener)
 	if err != nil {
 		return fmt.Errorf("failed to set up server: %w", err)
 	}
 	defer listener.Close()
+
+	defer func() {
+		if err := grpcClient.Close(); err != nil {
+			logrus.Errorf("Failed to close notification connection: %v", err)
+		}
+	}()
 
 	// Start serving the gRPC server
 	logrus.Info("Starting gRPC server...")

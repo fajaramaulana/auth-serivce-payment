@@ -11,6 +11,7 @@ import (
 	"github.com/fajaramaulana/auth-serivce-payment/internal/repository"
 	"github.com/fajaramaulana/auth-serivce-payment/internal/utils"
 	"github.com/fajaramaulana/shared-proto-payment/proto/auth"
+	pb "github.com/fajaramaulana/shared-proto-payment/proto/notification"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/grpc/codes"
@@ -22,15 +23,17 @@ type AuthServiceImpl struct {
 	config                              config.Config
 	hasher                              utils.PasswordHasher
 	token                               utils.TokenHandlerIntf
+	notificationClient                  pb.NotificationServiceClient
 	auth.UnimplementedAuthServiceServer // embed by value
 }
 
-func NewAuthService(authRepo repository.UserRepository, config config.Config, hasher utils.PasswordHasher, token utils.TokenHandlerIntf) auth.AuthServiceServer {
+func NewAuthService(authRepo repository.UserRepository, config config.Config, hasher utils.PasswordHasher, token utils.TokenHandlerIntf, notificationClient pb.NotificationServiceClient) auth.AuthServiceServer {
 	return &AuthServiceImpl{
-		repo:   authRepo,
-		config: config,
-		hasher: hasher,
-		token:  token,
+		repo:               authRepo,
+		config:             config,
+		hasher:             hasher,
+		token:              token,
+		notificationClient: notificationClient,
 	}
 }
 
@@ -40,33 +43,56 @@ func (s *AuthServiceImpl) LoginUser(ctx context.Context, req *auth.LoginRequest)
 	user, err := s.repo.FindUserByUsername(req.GetUsername())
 	if err != nil {
 		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error finding user: %v", err)
-		return &auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Invalid credentials", AccessToken: "", RefreshToken: ""}, nil
+		return &auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Invalid credentials", AccessToken: "", RefreshToken: ""}, status.Error(codes.Internal, "internal server error")
 	}
 
 	if user == nil {
 		logrus.Warn("User not found")
-		return &auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Invalid credentials", AccessToken: "", RefreshToken: ""}, nil
+		return &auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Invalid credentials", AccessToken: "", RefreshToken: ""}, status.Error(codes.Unauthenticated, "invalid credentials")
 	}
 
 	// Compare password
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.GetPassword())); err != nil {
 		logrus.Warn("Password mismatch")
-		return &auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Invalid credentials", AccessToken: "", RefreshToken: ""}, nil
+		return &auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Invalid credentials", AccessToken: "", RefreshToken: ""}, status.Error(codes.Unauthenticated, "invalid credentials")
 	}
 
 	accessToken, refreshToken, err := s.token.CreateToken(user.ID)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error creating token: %v", err)
-		return &auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, nil
+		return &auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, status.Error(codes.Internal, "internal server error")
 	}
 
 	err = s.repo.UpdateRefreshToken(user.ID, refreshToken)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error updating refresh token: %v", err)
-		return &auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, nil
+		return &auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, status.Error(codes.Internal, "internal server error")
 	}
 
-	logrus.WithFields(logrus.Fields{"request": req}).Infof("User %s logged in successfully", req.GetUsername())
+	// Example notification sending code
+	res, err := s.notificationClient.SendNotification(ctx, &pb.NotificationRequest{
+		UserId:    fmt.Sprintf("%d", user.ID),
+		Message:   "Login successful",
+		Title:     "Someone logged in on your account",
+		Type:      "alert",
+		IpAddress: "123131",
+		UserAgent: "asdadada",
+		Timestamp: time.Now().String(),
+	})
+
+	if err != nil {
+		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error sending notification: %v", err)
+		return &auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, status.Errorf(codes.Internal, "internal server error")
+	}
+
+	if res.GetMessage() != "Success" {
+		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error sending notification: %v", res.GetMessage())
+		return &auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, status.Errorf(codes.Internal, "internal server error")
+	}
+
+	logrus.Infof("Notification sent: %s", res.GetMessage())
+	logrus.Infof("User %s logged in successfully", req.GetUsername())
+
 	return &auth.LoginResponse{Status: http.StatusOK, Message: "Login successful", AccessToken: accessToken, RefreshToken: refreshToken}, nil
 }
 
@@ -81,7 +107,7 @@ func (s *AuthServiceImpl) RegisterUser(ctx context.Context, req *auth.RegisterRe
 
 	if checkUsername {
 		logrus.Warn("Username already exists")
-		return &auth.RegisterResponse{Status: http.StatusConflict, Message: "Username already exists", AccessToken: "", RefreshToken: ""}, nil
+		return &auth.RegisterResponse{Status: http.StatusConflict, Message: "Username already exists", AccessToken: "", RefreshToken: ""}, status.Errorf(codes.AlreadyExists, "username already exists")
 	}
 
 	checkEmail, err := s.repo.CheckUserByEmailRegister(req.GetEmail())
@@ -92,7 +118,7 @@ func (s *AuthServiceImpl) RegisterUser(ctx context.Context, req *auth.RegisterRe
 
 	if checkEmail {
 		logrus.Warn("Email already exists")
-		return &auth.RegisterResponse{Status: http.StatusConflict, Message: "Email already exists", AccessToken: "", RefreshToken: ""}, nil
+		return &auth.RegisterResponse{Status: http.StatusConflict, Message: "Email already exists", AccessToken: "", RefreshToken: ""}, status.Error(codes.AlreadyExists, "email already exists")
 	}
 
 	hashedPassword, err := s.hasher.Generate([]byte(req.GetPassword()), bcrypt.DefaultCost)
@@ -142,6 +168,26 @@ func (s *AuthServiceImpl) RegisterUser(ctx context.Context, req *auth.RegisterRe
 	if err != nil {
 		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error updating refresh token: %v", err)
 		return nil, fmt.Errorf("internal server error")
+	}
+
+	resNotif, err := s.notificationClient.SendNotification(ctx, &pb.NotificationRequest{
+		UserId:    fmt.Sprintf("%d", userId),
+		Message:   "Registration successful",
+		Title:     "Welcome to the platform",
+		Type:      "alert",
+		IpAddress: "123131",
+		UserAgent: "asdadada",
+		Timestamp: time.Now().String(),
+	})
+
+	if err != nil {
+		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error sending notification: %v", err)
+		return &auth.RegisterResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, status.Errorf(codes.Internal, "internal server error")
+	}
+
+	if resNotif.GetMessage() != "Success" {
+		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error sending notification: %v", resNotif.GetMessage())
+		return &auth.RegisterResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, status.Errorf(codes.Internal, "internal server error")
 	}
 
 	logrus.WithFields(logrus.Fields{"request": req}).Infof("User %s registered successfully", req.GetUsername())

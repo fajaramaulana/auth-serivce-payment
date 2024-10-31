@@ -19,10 +19,12 @@ import (
 	"github.com/stretchr/testify/mock"
 	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/grpc/status"
+
+	mockGrpc "github.com/fajaramaulana/shared-proto-payment/mocks"
 )
 
 func TestAuthServiceImpl_LoginUser(t *testing.T) {
-	db, mock, err := sqlmock.New()
+	db, dbmock, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("an error '%s' occurred when opening a mock database connection", err)
 	}
@@ -34,8 +36,8 @@ func TestAuthServiceImpl_LoginUser(t *testing.T) {
 	mockConfig.On("Get", "JWT_SECRET").Return("secret")
 	mockConfig.On("Get", "ENV").Return("test")
 	mockRepo := repository.NewUserRepository(db, mockConfig)
-
-	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken)
+	mockNotifClient := new(mockGrpc.NotificationServiceClient)
+	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient)
 
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
 	expectedUser := &model.GetUserPassword{
@@ -46,18 +48,18 @@ func TestAuthServiceImpl_LoginUser(t *testing.T) {
 	}
 
 	// Mock the query to fetch the user
-	mock.ExpectQuery("SELECT id, username, email, password FROM users WHERE username = ?").
+	dbmock.ExpectQuery("SELECT id, username, email, password FROM users WHERE username = ?").
 		WithArgs("testuser").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "email", "password"}).
 			AddRow(expectedUser.ID, expectedUser.Username, expectedUser.Email, expectedUser.Password))
 
 	// Mock the update of the refresh token
-	mock.ExpectExec("UPDATE users SET refresh_token = \\? WHERE id = \\?").
+	dbmock.ExpectExec("UPDATE users SET refresh_token = \\? WHERE id = \\?").
 		WithArgs(sqlmock.AnyArg(), expectedUser.ID).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	mockToken.On("CreateToken", 1).Return("new_valid_access_token", "valid_refresh_token", nil)
-
+	mockNotifClient.On("SendNotification", mock.Anything, mock.Anything).Return(nil, nil)
 	req := &auth.LoginRequest{Username: "testuser", Password: "password123"}
 	resp, err := service.LoginUser(context.Background(), req)
 
@@ -67,13 +69,13 @@ func TestAuthServiceImpl_LoginUser(t *testing.T) {
 	assert.NotEmpty(t, resp.RefreshToken)
 
 	// Ensure all expectations were met
-	if err := mock.ExpectationsWereMet(); err != nil {
+	if err := dbmock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled mock expectations: %v", err)
 	}
 }
 
 func TestAuthServiceImpl_LoginUser_ErrorCases(t *testing.T) {
-	db, mock, err := sqlmock.New()
+	db, dbmock, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("an error '%s' occurred when opening a mock database connection", err)
 	}
@@ -85,12 +87,13 @@ func TestAuthServiceImpl_LoginUser_ErrorCases(t *testing.T) {
 	mockConfig.On("Get", "JWT_SECRET").Return("secret")
 	mockConfig.On("Get", "ENV").Return("test")
 	mockRepo := repository.NewUserRepository(db, mockConfig)
-	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken)
+	mockNotifClient := new(mockGrpc.NotificationServiceClient)
+	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient)
 
 	username := "testuser1"
 
 	// Mock SQL query to return sql.ErrNoRows to simulate a "user not found" scenario
-	mock.ExpectQuery("SELECT id, username, email, password FROM users WHERE username = ?").
+	dbmock.ExpectQuery("SELECT id, username, email, password FROM users WHERE username = ?").
 		WithArgs(username).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "email", "password"})) // No rows returned
 
@@ -115,7 +118,8 @@ func TestAuthServiceImpl_LoginUser_UserNotFound(t *testing.T) {
 	mockConfig.On("Get", "JWT_SECRET").Return("secret")
 	mockConfig.On("Get", "ENV").Return("test")
 	mockRepo := repository.NewUserRepository(db, mockConfig)
-	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken)
+	mockNotifClient := new(mockGrpc.NotificationServiceClient)
+	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient)
 
 	// Scenario: User Not Found
 	req := &auth.LoginRequest{Username: "nonexistentuser", Password: "password123"}
@@ -156,7 +160,8 @@ func TestAuthServiceImpl_LoginUser_PasswordMismatch(t *testing.T) {
 	mockConfig.On("Get", "JWT_SECRET").Return("secret")
 	mockConfig.On("Get", "ENV").Return("test")
 	mockRepo := repository.NewUserRepository(db, mockConfig)
-	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken)
+	mockNotifClient := new(mockGrpc.NotificationServiceClient)
+	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient)
 
 	// Prepare the hashed password
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
@@ -201,8 +206,8 @@ func TestAuthServiceImpl_LoginUser_TokenCreationError(t *testing.T) {
 	mockConfig.On("Get", "JWT_SECRET").Return("secret")
 	mockConfig.On("Get", "ENV").Return("test")
 	mockRepo := repository.NewUserRepository(db, mockConfig)
-
-	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken)
+	mockNotifClient := new(mockGrpc.NotificationServiceClient)
+	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient)
 
 	// Prepare the hashed password
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
@@ -250,8 +255,8 @@ func TestAuthServiceImpl_RegisterUser(t *testing.T) {
 	mockConfig.On("Get", "JWT_SECRET").Return("secret")
 	mockConfig.On("Get", "ENV").Return("test")
 	mockRepo := repository.NewUserRepository(db, mockConfig)
-
-	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken)
+	mockNotifClient := new(mockGrpc.NotificationServiceClient)
+	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient)
 
 	username := "testuser"
 	email := "test@example.com"
@@ -587,7 +592,8 @@ func TestAuthServiceImpl_RegisterUser_ErrorCases(t *testing.T) {
 			mockConfig.On("Get", "ENV").Return("test")
 			mockRepo := repository.NewUserRepository(db, mockConfig)
 
-			service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken)
+			mockNotifClient := new(mockGrpc.NotificationServiceClient)
+			service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient)
 
 			tt.setupSqlMock(mockDb)
 
@@ -689,7 +695,8 @@ func TestAuthServiceImpl_RefreshToken(t *testing.T) {
 			mockConfig.On("Get", "JWT_SECRET").Return(jwtSecret)
 
 			// Instantiate AuthServiceImpl with mocked dependencies
-			authService := service.NewAuthService(mockRepository, mockConfig, nil, mockTokenHandler)
+			mockNotifClient := new(mockGrpc.NotificationServiceClient)
+			authService := service.NewAuthService(mockRepository, mockConfig, nil, mockTokenHandler, mockNotifClient)
 
 			// Call RefreshToken and validate response
 			res, err := authService.RefreshToken(context.Background(), tt.req)

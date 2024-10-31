@@ -55,15 +55,15 @@
 			<div id="nav">
 				<select id="files">
 				
-				<option value="file0">github.com/fajaramaulana/auth-serivce-payment/cmd/auth/main.go (78.9%)</option>
+				<option value="file0">github.com/fajaramaulana/auth-serivce-payment/cmd/auth/main.go (76.1%)</option>
 				
 				<option value="file1">github.com/fajaramaulana/auth-serivce-payment/internal/config/config.go (81.8%)</option>
 				
 				<option value="file2">github.com/fajaramaulana/auth-serivce-payment/internal/config/mysql.go (92.9%)</option>
 				
-				<option value="file3">github.com/fajaramaulana/auth-serivce-payment/internal/repository/auth_repository_impl.go (83.9%)</option>
+				<option value="file3">github.com/fajaramaulana/auth-serivce-payment/internal/repository/auth_repository_impl.go (88.3%)</option>
 				
-				<option value="file4">github.com/fajaramaulana/auth-serivce-payment/internal/service/auth_service_impl.go (85.2%)</option>
+				<option value="file4">github.com/fajaramaulana/auth-serivce-payment/internal/service/auth_service_impl.go (85.4%)</option>
 				
 				<option value="file5">github.com/fajaramaulana/auth-serivce-payment/internal/utils/global.go (100.0%)</option>
 				
@@ -96,6 +96,7 @@
 		<pre class="file" id="file0" style="display: none">package main
 
 import (
+        "context"
         "database/sql"
         "fmt"
         "io"
@@ -107,6 +108,7 @@ import (
         "github.com/fajaramaulana/auth-serivce-payment/internal/service"
         "github.com/fajaramaulana/auth-serivce-payment/internal/utils"
         "github.com/fajaramaulana/shared-proto-payment/proto/auth"
+        pb "github.com/fajaramaulana/shared-proto-payment/proto/notification"
         "github.com/natefinch/lumberjack"
         "github.com/sirupsen/logrus"
         "google.golang.org/grpc"
@@ -148,7 +150,25 @@ func SetupServer(configuration config.Config, db *sql.DB, ListenerFunc func() (n
         authRepo := repository.NewUserRepository(db, configuration)
         passwordHasher := utils.NewPasswordHasher()
         tokenHandler := utils.NewTokenHandler(configuration)
-        authService := service.NewAuthService(authRepo, configuration, passwordHasher, tokenHandler)
+
+        notificationTarget := configuration.Get("NOTIFICATION_TARGET")
+
+        // Setup for Notification Service client
+        notificationConn, err := grpc.NewClient(notificationTarget, grpc.WithInsecure(), grpc.WithBlock(),
+                grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) </span><span class="cov0" title="0">{
+                        d := net.Dialer{}
+                        return d.DialContext(ctx, "tcp", addr)
+                }</span>))
+
+        <span class="cov8" title="1">if err != nil </span><span class="cov0" title="0">{
+                // Handle connection error
+                return nil, nil, err
+        }</span>
+        <span class="cov8" title="1">defer notificationConn.Close()
+
+        // Create NotificationServiceClient
+        notificationClient := pb.NewNotificationServiceClient(notificationConn)
+        authService := service.NewAuthService(authRepo, configuration, passwordHasher, tokenHandler, notificationClient)
 
         // Initialize gRPC server
         grpcServer := grpc.NewServer()
@@ -327,8 +347,15 @@ func (r *UserRepositoryImpl) FindUserByEmail(email string) (*model.GetUserPasswo
         var user model.GetUserPassword
         query := "SELECT id, username, email, password FROM users WHERE email = ?"
         row := r.db.QueryRow(query, email)
+        env := r.config.Get("ENV")
+        if env != "production" </span><span class="cov8" title="1">{
+                logrus.WithFields(logrus.Fields{
+                        "query": query,
+                        "email": email,
+                }).Info("Querying database")
+        }</span>
 
-        if err := row.Scan(&amp;user.ID, &amp;user.Username, &amp;user.Email, &amp;user.Password); err != nil </span><span class="cov8" title="1">{
+        <span class="cov8" title="1">if err := row.Scan(&amp;user.ID, &amp;user.Username, &amp;user.Email, &amp;user.Password); err != nil </span><span class="cov8" title="1">{
                 if err == sql.ErrNoRows </span><span class="cov8" title="1">{
                         return nil, nil // User not found
                 }</span>
@@ -341,8 +368,15 @@ func (r *UserRepositoryImpl) FindUserByEmail(email string) (*model.GetUserPasswo
 func (r *UserRepositoryImpl) CheckUserByEmailRegister(email string) (bool, error) <span class="cov8" title="1">{
         query := "SELECT COUNT(*) FROM users WHERE email = ?"
         row := r.db.QueryRow(query, email)
+        env := r.config.Get("ENV")
+        if env != "production" </span><span class="cov8" title="1">{
+                logrus.WithFields(logrus.Fields{
+                        "query": query,
+                        "email": email,
+                }).Info("Querying database")
+        }</span>
 
-        var count int
+        <span class="cov8" title="1">var count int
         if err := row.Scan(&amp;count); err != nil </span><span class="cov0" title="0">{
                 return false, err
         }</span>
@@ -353,8 +387,15 @@ func (r *UserRepositoryImpl) CheckUserByEmailRegister(email string) (bool, error
 func (r *UserRepositoryImpl) CheckUserByUsernameRegister(username string) (bool, error) <span class="cov8" title="1">{
         query := "SELECT COUNT(*) FROM users WHERE username = ?"
         row := r.db.QueryRow(query, username)
+        env := r.config.Get("ENV")
+        if env != "production" </span><span class="cov8" title="1">{
+                logrus.WithFields(logrus.Fields{
+                        "query":    query,
+                        "username": username,
+                }).Info("Querying database")
+        }</span>
 
-        var count int
+        <span class="cov8" title="1">var count int
         if err := row.Scan(&amp;count); err != nil </span><span class="cov0" title="0">{
                 return false, err
         }</span>
@@ -375,6 +416,14 @@ func (r *UserRepositoryImpl) CreateUser(user *model.UserRegister) (result sql.Re
                 return nil, err
         }</span>
 
+        <span class="cov8" title="1">env := r.config.Get("ENV")
+        if env != "production" </span><span class="cov8" title="1">{
+                logrus.WithFields(logrus.Fields{
+                        "query":   query,
+                        "payload": user,
+                }).Info("Querying database")
+        }</span>
+
         <span class="cov8" title="1">err = tx.Commit()
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
@@ -386,8 +435,15 @@ func (r *UserRepositoryImpl) CreateUser(user *model.UserRegister) (result sql.Re
 func (r *UserRepositoryImpl) CheckRefreshToken(UserId int, refreshToken string) (bool, error) <span class="cov8" title="1">{
         query := "SELECT COUNT(*) FROM users WHERE id = ? AND refresh_token = ?"
         row := r.db.QueryRow(query, UserId, refreshToken)
-
-        var count int
+        env := r.config.Get("ENV")
+        if env != "production" </span><span class="cov8" title="1">{
+                logrus.WithFields(logrus.Fields{
+                        "query":         query,
+                        "user_id":       UserId,
+                        "refresh_token": refreshToken,
+                }).Info("Querying database")
+        }</span>
+        <span class="cov8" title="1">var count int
         if err := row.Scan(&amp;count); err != nil </span><span class="cov0" title="0">{
                 return false, err
         }</span>
@@ -397,14 +453,30 @@ func (r *UserRepositoryImpl) CheckRefreshToken(UserId int, refreshToken string) 
 func (r *UserRepositoryImpl) DeleteRefreshToken(UserId int, refreshToken string) error <span class="cov8" title="1">{
         query := "DELETE FROM users WHERE id = ? AND refresh_token = ?"
         _, err := r.db.Exec(query, UserId, refreshToken)
-        return err
-}</span>
+        env := r.config.Get("ENV")
+        if env != "production" </span><span class="cov8" title="1">{
+                logrus.WithFields(logrus.Fields{
+                        "query":         query,
+                        "user_id":       UserId,
+                        "refresh_token": refreshToken,
+                }).Info("Querying database")
+        }</span>
+        <span class="cov8" title="1">return err</span>
+}
 
 func (r *UserRepositoryImpl) UpdateRefreshToken(UserId int, refreshToken string) error <span class="cov8" title="1">{
         query := "UPDATE users SET refresh_token = ? WHERE id = ?"
-        _, err := r.db.Exec(query, refreshToken, UserId)
-        return err
-}</span>
+        env := r.config.Get("ENV")
+        if env != "production" </span><span class="cov8" title="1">{
+                logrus.WithFields(logrus.Fields{
+                        "query":         query,
+                        "user_id":       UserId,
+                        "refresh_token": refreshToken,
+                }).Info("Querying database")
+        }</span>
+        <span class="cov8" title="1">_, err := r.db.Exec(query, refreshToken, UserId)
+        return err</span>
+}
 </pre>
 		
 		<pre class="file" id="file4" style="display: none">package service
@@ -420,6 +492,7 @@ import (
         "github.com/fajaramaulana/auth-serivce-payment/internal/repository"
         "github.com/fajaramaulana/auth-serivce-payment/internal/utils"
         "github.com/fajaramaulana/shared-proto-payment/proto/auth"
+        pb "github.com/fajaramaulana/shared-proto-payment/proto/notification"
         "github.com/sirupsen/logrus"
         "golang.org/x/crypto/bcrypt"
         "google.golang.org/grpc/codes"
@@ -431,15 +504,17 @@ type AuthServiceImpl struct {
         config                              config.Config
         hasher                              utils.PasswordHasher
         token                               utils.TokenHandlerIntf
+        notificationClient                  pb.NotificationServiceClient
         auth.UnimplementedAuthServiceServer // embed by value
 }
 
-func NewAuthService(authRepo repository.UserRepository, config config.Config, hasher utils.PasswordHasher, token utils.TokenHandlerIntf) auth.AuthServiceServer <span class="cov8" title="1">{
+func NewAuthService(authRepo repository.UserRepository, config config.Config, hasher utils.PasswordHasher, token utils.TokenHandlerIntf, notificationClient pb.NotificationServiceClient) auth.AuthServiceServer <span class="cov8" title="1">{
         return &amp;AuthServiceImpl{
-                repo:   authRepo,
-                config: config,
-                hasher: hasher,
-                token:  token,
+                repo:               authRepo,
+                config:             config,
+                hasher:             hasher,
+                token:              token,
+                notificationClient: notificationClient,
         }
 }</span>
 
@@ -475,7 +550,16 @@ func (s *AuthServiceImpl) LoginUser(ctx context.Context, req *auth.LoginRequest)
                 return &amp;auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, nil
         }</span>
 
-        <span class="cov8" title="1">logrus.WithFields(logrus.Fields{"request": req}).Infof("User %s logged in successfully", req.GetUsername())
+        <span class="cov8" title="1">s.notificationClient.SendNotification(context.Background(), &amp;pb.NotificationRequest{
+                UserId:    fmt.Sprintf("%d", user.ID),
+                Message:   "Login successful",
+                Title:     "Someone logged in on your account",
+                Type:      "alert",
+                IpAddress: "123131",
+                UserAgent: "asdadada",
+                Timestamp: time.Now().String(),
+        })
+
         return &amp;auth.LoginResponse{Status: http.StatusOK, Message: "Login successful", AccessToken: accessToken, RefreshToken: refreshToken}, nil</span>
 }
 
@@ -567,8 +651,10 @@ func (s *AuthServiceImpl) RefreshToken(ctx context.Context, req *auth.RefreshTok
                 return nil, status.Errorf(codes.Internal, "internal server error")
         }</span>
 
+        <span class="cov8" title="1">fmt.Printf("%# v\n", userIdResult)
+
         // Add a call to `CheckRefreshToken` here if needed.
-        <span class="cov8" title="1">isTokenValid, err := s.repo.CheckRefreshToken(userIdResult.UserID, req.GetRefreshToken())
+        isTokenValid, err := s.repo.CheckRefreshToken(userIdResult.UserID, req.GetRefreshToken())
         fmt.Printf("%# v\n", isTokenValid)
         fmt.Printf("%# v\n", err)
         if err != nil || !isTokenValid </span><span class="cov0" title="0">{
