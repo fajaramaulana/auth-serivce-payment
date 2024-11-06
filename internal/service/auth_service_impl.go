@@ -77,7 +77,7 @@ func (s *AuthServiceImpl) LoginUser(ctx context.Context, req *auth.LoginRequest)
 		Type:      "alert",
 		IpAddress: "123131",
 		UserAgent: "asdadada",
-		Timestamp: time.Now().String(),
+		Timestamp: utils.ConvertToDateTime(time.Now()),
 	})
 
 	if err != nil {
@@ -128,7 +128,7 @@ func (s *AuthServiceImpl) RegisterUser(ctx context.Context, req *auth.RegisterRe
 	}
 
 	// covert req.GetDob() to time.Time
-	dob, err := time.Parse("2006-01-02", req.GetDob())
+	dob, err := time.Parse("2006-01-02", req.GetDob().String())
 	if err != nil {
 		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error parsing dob: %v", err)
 		return nil, fmt.Errorf("internal server error")
@@ -177,7 +177,7 @@ func (s *AuthServiceImpl) RegisterUser(ctx context.Context, req *auth.RegisterRe
 		Type:      "alert",
 		IpAddress: "123131",
 		UserAgent: "asdadada",
-		Timestamp: time.Now().String(),
+		Timestamp: utils.ConvertToDateTime(time.Now()),
 	})
 
 	if err != nil {
