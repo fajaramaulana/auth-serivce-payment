@@ -12,6 +12,7 @@ import (
 	"github.com/fajaramaulana/auth-serivce-payment/internal/utils"
 	"github.com/fajaramaulana/shared-proto-payment/proto/auth"
 	pb "github.com/fajaramaulana/shared-proto-payment/proto/notification"
+	"github.com/go-redis/redis/v8"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/grpc/codes"
@@ -24,16 +25,18 @@ type AuthServiceImpl struct {
 	hasher                              utils.PasswordHasher
 	token                               utils.TokenHandlerIntf
 	notificationClient                  pb.NotificationServiceClient
+	redisClient                         *redis.Client
 	auth.UnimplementedAuthServiceServer // embed by value
 }
 
-func NewAuthService(authRepo repository.UserRepository, config config.Config, hasher utils.PasswordHasher, token utils.TokenHandlerIntf, notificationClient pb.NotificationServiceClient) auth.AuthServiceServer {
+func NewAuthService(authRepo repository.UserRepository, config config.Config, hasher utils.PasswordHasher, token utils.TokenHandlerIntf, notificationClient pb.NotificationServiceClient, redisClient *redis.Client) auth.AuthServiceServer {
 	return &AuthServiceImpl{
 		repo:               authRepo,
 		config:             config,
 		hasher:             hasher,
 		token:              token,
 		notificationClient: notificationClient,
+		redisClient:        redisClient,
 	}
 }
 
@@ -124,14 +127,15 @@ func (s *AuthServiceImpl) RegisterUser(ctx context.Context, req *auth.RegisterRe
 	hashedPassword, err := s.hasher.Generate([]byte(req.GetPassword()), bcrypt.DefaultCost)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error hashing password: %v", err)
-		return nil, fmt.Errorf("internal server error") // Early return on error
+		return nil, fmt.Errorf("internal server error %v", err)
 	}
 
 	// covert req.GetDob() to time.Time
-	dob, err := time.Parse("2006-01-02", req.GetDob().String())
+	dobStr := fmt.Sprintf("%d-%02d-%02d", req.GetDob().GetYear(), req.GetDob().GetMonth(), req.GetDob().GetDay())
+	dob, err := time.Parse("2006-01-02", dobStr)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error parsing dob: %v", err)
-		return nil, fmt.Errorf("internal server error")
+		return nil, fmt.Errorf("internal server error %v", err)
 	}
 
 	// Create user

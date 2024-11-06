@@ -9,12 +9,15 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/fajaramaulana/auth-serivce-payment/internal/model"
 	"github.com/fajaramaulana/auth-serivce-payment/internal/repository"
 	"github.com/fajaramaulana/auth-serivce-payment/internal/service"
 	"github.com/fajaramaulana/auth-serivce-payment/internal/utils"
 	"github.com/fajaramaulana/auth-serivce-payment/mocks"
 	"github.com/fajaramaulana/shared-proto-payment/proto/auth"
+	"github.com/fajaramaulana/shared-proto-payment/proto/notification"
+	"github.com/go-redis/redis/v8"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"golang.org/x/crypto/bcrypt"
@@ -31,6 +34,7 @@ func TestAuthServiceImpl_LoginUser(t *testing.T) {
 	}
 	defer db.Close()
 
+	// Mock dependencies
 	mockConfig := new(mocks.MockConfig)
 	mockPassHash := new(mocks.MockPasswordHasher)
 	mockToken := new(mocks.MockTokenHandler)
@@ -38,8 +42,21 @@ func TestAuthServiceImpl_LoginUser(t *testing.T) {
 	mockConfig.On("Get", "ENV").Return("test")
 	mockRepo := repository.NewUserRepository(db, mockConfig)
 	mockNotifClient := new(mockGrpc.NotificationServiceClient)
-	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient)
 
+	// Start mock Redis server
+	mockRedis, err := miniredis.Run()
+	assert.NoError(t, err)
+	defer mockRedis.Close()
+	mockConfig.On("Get", "REDIS_HOST").Return(mockRedis.Addr())
+
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: mockRedis.Addr(),
+	})
+
+	// Initialize service with mocks
+	authService := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient, redisClient)
+
+	// Hash password to match what LoginUser will expect
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
 	expectedUser := &model.GetUserPassword{
 		ID:       int(1),
@@ -48,28 +65,35 @@ func TestAuthServiceImpl_LoginUser(t *testing.T) {
 		Password: string(hashedPassword),
 	}
 
-	// Mock the query to fetch the user
+	// Mock database query to fetch user
 	dbmock.ExpectQuery("SELECT id, username, email, password FROM users WHERE username = ?").
 		WithArgs("testuser").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "email", "password"}).
 			AddRow(expectedUser.ID, expectedUser.Username, expectedUser.Email, expectedUser.Password))
 
-	// Mock the update of the refresh token
+	// Mock update of refresh token in database
 	dbmock.ExpectExec("UPDATE users SET refresh_token = \\? WHERE id = \\?").
 		WithArgs(sqlmock.AnyArg(), expectedUser.ID).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
+	// Mock token creation
 	mockToken.On("CreateToken", 1).Return("new_valid_access_token", "valid_refresh_token", nil)
-	mockNotifClient.On("SendNotification", mock.Anything, mock.Anything).Return(nil, nil)
+
+	// Correctly mock notification client response to prevent errors
+	mockNotifClient.On("SendNotification", mock.Anything, mock.Anything).
+		Return(&notification.NotificationResponse{Status: "true", Message: "Success"}, nil)
+
+	// Execute the function under test
 	req := &auth.LoginRequest{Username: "testuser", Password: "password123"}
-	resp, err := service.LoginUser(context.Background(), req)
+	resp, err := authService.LoginUser(context.Background(), req)
 
-	assert.NoError(t, err)
+	// Validate results
+	assert.NoError(t, err, fmt.Sprintf("expected no error, got: %v", err))
 	assert.Equal(t, http.StatusOK, int(resp.Status))
-	assert.NotEmpty(t, resp.AccessToken)
-	assert.NotEmpty(t, resp.RefreshToken)
+	assert.NotEmpty(t, resp.AccessToken, "expected non-empty AccessToken")
+	assert.NotEmpty(t, resp.RefreshToken, "expected non-empty RefreshToken")
 
-	// Ensure all expectations were met
+	// Verify all database expectations are met
 	if err := dbmock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled mock expectations: %v", err)
 	}
@@ -82,6 +106,7 @@ func TestAuthServiceImpl_LoginUser_ErrorCases(t *testing.T) {
 	}
 	defer db.Close()
 
+	// Mock dependencies
 	mockConfig := new(mocks.MockConfig)
 	mockPassHash := new(mocks.MockPasswordHasher)
 	mockToken := new(mocks.MockTokenHandler)
@@ -89,9 +114,22 @@ func TestAuthServiceImpl_LoginUser_ErrorCases(t *testing.T) {
 	mockConfig.On("Get", "ENV").Return("test")
 	mockRepo := repository.NewUserRepository(db, mockConfig)
 	mockNotifClient := new(mockGrpc.NotificationServiceClient)
-	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient)
+
+	// Start mock Redis server
+	mockRedis, err := miniredis.Run()
+	assert.NoError(t, err)
+	defer mockRedis.Close()
+	mockConfig.On("Get", "REDIS_HOST").Return(mockRedis.Addr())
+
+	// Create a Redis client based on the mock Redis server
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: mockRedis.Addr(),
+	})
+
+	authService := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient, redisClient)
 
 	username := "testuser1"
+	// hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
 
 	// Mock SQL query to return sql.ErrNoRows to simulate a "user not found" scenario
 	dbmock.ExpectQuery("SELECT id, username, email, password FROM users WHERE username = ?").
@@ -99,8 +137,8 @@ func TestAuthServiceImpl_LoginUser_ErrorCases(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "email", "password"})) // No rows returned
 
 	reqNotFound := &auth.LoginRequest{Username: "nonexistentuser", Password: "password123"}
-	respNotFound, err := service.LoginUser(context.Background(), reqNotFound)
-	assert.NoError(t, err)
+	respNotFound, err := authService.LoginUser(context.Background(), reqNotFound)
+	assert.Error(t, err)
 	assert.NotNil(t, respNotFound)                                       // Check that response is not nil
 	assert.Equal(t, int32(http.StatusUnauthorized), respNotFound.Status) // Check the response status
 	assert.Equal(t, "Invalid credentials", respNotFound.Message)         // Check the response message
@@ -120,7 +158,18 @@ func TestAuthServiceImpl_LoginUser_UserNotFound(t *testing.T) {
 	mockConfig.On("Get", "ENV").Return("test")
 	mockRepo := repository.NewUserRepository(db, mockConfig)
 	mockNotifClient := new(mockGrpc.NotificationServiceClient)
-	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient)
+
+	mockRedis, err := miniredis.Run()
+	assert.NoError(t, err)
+	defer mockRedis.Close()
+	mockConfig.On("Get", "REDIS_HOST").Return(mockRedis.Addr())
+
+	// Create a Redis client based on the mock Redis server
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: mockRedis.Addr(),
+	})
+
+	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient, redisClient)
 
 	// Scenario: User Not Found
 	req := &auth.LoginRequest{Username: "nonexistentuser", Password: "password123"}
@@ -134,7 +183,7 @@ func TestAuthServiceImpl_LoginUser_UserNotFound(t *testing.T) {
 	resp, err := service.LoginUser(context.Background(), req)
 
 	// Assertions
-	assert.NoError(t, err)                                       // No error should be returned
+	assert.Error(t, err)                                         // No error should be returned
 	assert.NotNil(t, resp)                                       // Check that response is not nil
 	assert.Equal(t, int32(http.StatusUnauthorized), resp.Status) // Check response status
 	assert.Equal(t, "Invalid credentials", resp.Message)         // Check response message
@@ -162,7 +211,18 @@ func TestAuthServiceImpl_LoginUser_PasswordMismatch(t *testing.T) {
 	mockConfig.On("Get", "ENV").Return("test")
 	mockRepo := repository.NewUserRepository(db, mockConfig)
 	mockNotifClient := new(mockGrpc.NotificationServiceClient)
-	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient)
+
+	mockRedis, err := miniredis.Run()
+	assert.NoError(t, err)
+	defer mockRedis.Close()
+	mockConfig.On("Get", "REDIS_HOST").Return(mockRedis.Addr())
+
+	// Create a Redis client based on the mock Redis server
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: mockRedis.Addr(),
+	})
+
+	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient, redisClient)
 
 	// Prepare the hashed password
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
@@ -180,7 +240,7 @@ func TestAuthServiceImpl_LoginUser_PasswordMismatch(t *testing.T) {
 	resp, err := service.LoginUser(context.Background(), req)
 
 	// Assertions
-	assert.NoError(t, err)                                       // No error should be returned
+	assert.Error(t, err)                                         // No error should be returned
 	assert.NotNil(t, resp)                                       // Check that response is not nil
 	assert.Equal(t, int32(http.StatusUnauthorized), resp.Status) // Check response status
 	assert.Equal(t, "Invalid credentials", resp.Message)         // Check response message
@@ -208,7 +268,18 @@ func TestAuthServiceImpl_LoginUser_TokenCreationError(t *testing.T) {
 	mockConfig.On("Get", "ENV").Return("test")
 	mockRepo := repository.NewUserRepository(db, mockConfig)
 	mockNotifClient := new(mockGrpc.NotificationServiceClient)
-	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient)
+
+	mockRedis, err := miniredis.Run()
+	assert.NoError(t, err)
+	defer mockRedis.Close()
+	mockConfig.On("Get", "REDIS_HOST").Return(mockRedis.Addr())
+
+	// Create a Redis client based on the mock Redis server
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: mockRedis.Addr(),
+	})
+
+	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient, redisClient)
 
 	// Prepare the hashed password
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
@@ -229,7 +300,7 @@ func TestAuthServiceImpl_LoginUser_TokenCreationError(t *testing.T) {
 	resp, err := service.LoginUser(context.Background(), req)
 
 	// Assertions
-	assert.NoError(t, err)
+	assert.Error(t, err)
 	assert.NotNil(t, resp)
 	assert.Equal(t, int32(http.StatusInternalServerError), resp.Status)
 	assert.Equal(t, "Internal server error", resp.Message)
@@ -257,7 +328,18 @@ func TestAuthServiceImpl_RegisterUser(t *testing.T) {
 	mockConfig.On("Get", "ENV").Return("test")
 	mockRepo := repository.NewUserRepository(db, mockConfig)
 	mockNotifClient := new(mockGrpc.NotificationServiceClient)
-	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient)
+
+	mockRedis, err := miniredis.Run()
+	assert.NoError(t, err)
+	defer mockRedis.Close()
+	mockConfig.On("Get", "REDIS_HOST").Return(mockRedis.Addr())
+
+	// Create a Redis client based on the mock Redis server
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: mockRedis.Addr(),
+	})
+
+	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient, redisClient)
 
 	username := "testuser"
 	email := "test@example.com"
@@ -297,20 +379,23 @@ func TestAuthServiceImpl_RegisterUser(t *testing.T) {
 		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
+	dateDob, err := utils.ConvertToDate("2006-01-02")
+	assert.NoError(t, err)
+
 	req := &auth.RegisterRequest{
-		Username:  username,
-		Email:     email,
-		Password:  "password123",
-		FirstName: "Test",
-		LastName:  "User",
-		Dob: &date.Date{
-			Year:  int32(expectedUser.Dob.Year()),
-			Month: int32(expectedUser.Dob.Month()),
-			Day:   int32(expectedUser.Dob.Day()),
-		},
+		Username:     username,
+		Email:        email,
+		Password:     "password123",
+		FirstName:    "Test",
+		LastName:     "User",
+		Dob:          dateDob,
 		PlaceOfBirth: "Jakarta",
 		PhoneNumber:  "081111111111",
 	}
+
+	// Correctly mock notification client response to prevent errors
+	mockNotifClient.On("SendNotification", mock.Anything, mock.Anything).
+		Return(&notification.NotificationResponse{Status: "true", Message: "Success"}, nil)
 
 	resp, err := service.RegisterUser(context.Background(), req)
 
@@ -630,7 +715,18 @@ func TestAuthServiceImpl_RegisterUser_ErrorCases(t *testing.T) {
 			mockRepo := repository.NewUserRepository(db, mockConfig)
 
 			mockNotifClient := new(mockGrpc.NotificationServiceClient)
-			service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient)
+
+			mockRedis, err := miniredis.Run()
+			assert.NoError(t, err)
+			defer mockRedis.Close()
+			mockConfig.On("Get", "REDIS_HOST").Return(mockRedis.Addr())
+
+			// Create a Redis client based on the mock Redis server
+			redisClient := redis.NewClient(&redis.Options{
+				Addr: mockRedis.Addr(),
+			})
+
+			service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient, redisClient)
 
 			tt.setupSqlMock(mockDb)
 
@@ -643,14 +739,14 @@ func TestAuthServiceImpl_RegisterUser_ErrorCases(t *testing.T) {
 			// Switch to check specific assertions based on the error case
 			switch tt.errorType {
 			case ErrorUsernameExists:
-				assert.NoError(t, err)
+				assert.Error(t, err)
 				assert.Equal(t, http.StatusConflict, int(resp.Status))
 				assert.Equal(t, "Username already exists", resp.Message)
 				assert.Empty(t, resp.AccessToken)
 				assert.Empty(t, resp.RefreshToken)
 
 			case ErrorEmailExists:
-				assert.NoError(t, err)
+				assert.Error(t, err)
 				assert.Equal(t, http.StatusConflict, int(resp.Status))
 				assert.Equal(t, "Email already exists", resp.Message)
 				assert.Empty(t, resp.AccessToken)
@@ -733,7 +829,16 @@ func TestAuthServiceImpl_RefreshToken(t *testing.T) {
 
 			// Instantiate AuthServiceImpl with mocked dependencies
 			mockNotifClient := new(mockGrpc.NotificationServiceClient)
-			authService := service.NewAuthService(mockRepository, mockConfig, nil, mockTokenHandler, mockNotifClient)
+			mockRedis, err := miniredis.Run()
+			assert.NoError(t, err)
+			defer mockRedis.Close()
+			mockConfig.On("Get", "REDIS_HOST").Return(mockRedis.Addr())
+
+			// Create a Redis client based on the mock Redis server
+			redisClient := redis.NewClient(&redis.Options{
+				Addr: mockRedis.Addr(),
+			})
+			authService := service.NewAuthService(mockRepository, mockConfig, nil, mockTokenHandler, mockNotifClient, redisClient)
 
 			// Call RefreshToken and validate response
 			res, err := authService.RefreshToken(context.Background(), tt.req)

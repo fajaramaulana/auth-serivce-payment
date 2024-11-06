@@ -86,6 +86,7 @@ func TestConnectDBMysql_InvalidPort(t *testing.T) {
 	mockConfig.AssertCalled(t, "Get", "DB_USER")
 	mockConfig.AssertCalled(t, "Get", "DB_PASSWORD")
 	mockConfig.AssertCalled(t, "Get", "DB_HOST")
+
 	mockConfig.AssertCalled(t, "Get", "DB_PORT")
 	mockConfig.AssertCalled(t, "Get", "DB_TYPE")
 	mockConfig.AssertCalled(t, "Get", "DB_NAME")
