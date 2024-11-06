@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"golang.org/x/crypto/bcrypt"
+	"google.golang.org/genproto/googleapis/type/date"
 	"google.golang.org/grpc/status"
 
 	mockGrpc "github.com/fajaramaulana/shared-proto-payment/mocks"
@@ -297,12 +298,16 @@ func TestAuthServiceImpl_RegisterUser(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	req := &auth.RegisterRequest{
-		Username:     username,
-		Email:        email,
-		Password:     "password123",
-		FirstName:    "Test",
-		LastName:     "User",
-		Dob:          "2006-01-02",
+		Username:  username,
+		Email:     email,
+		Password:  "password123",
+		FirstName: "Test",
+		LastName:  "User",
+		Dob: &date.Date{
+			Year:  int32(expectedUser.Dob.Year()),
+			Month: int32(expectedUser.Dob.Month()),
+			Day:   int32(expectedUser.Dob.Day()),
+		},
 		PlaceOfBirth: "Jakarta",
 		PhoneNumber:  "081111111111",
 	}
@@ -356,12 +361,16 @@ func TestAuthServiceImpl_RegisterUser_ErrorCases(t *testing.T) {
 				mockToken.On("CreateToken", mock.Anything, mock.Anything).Return("abcd", "abcd", "")
 			},
 			req: &auth.RegisterRequest{
-				Username:     username,
-				Email:        email,
-				Password:     "password123",
-				FirstName:    "Test",
-				LastName:     "User",
-				Dob:          "2006-01-02",
+				Username:  username,
+				Email:     email,
+				Password:  "password123",
+				FirstName: "Test",
+				LastName:  "User",
+				Dob: &date.Date{
+					Year:  int32(dob.Year()),
+					Month: int32(dob.Month()),
+					Day:   int32(dob.Day()),
+				},
 				PlaceOfBirth: "Jakarta",
 				PhoneNumber:  "081111111111",
 			},
@@ -383,12 +392,16 @@ func TestAuthServiceImpl_RegisterUser_ErrorCases(t *testing.T) {
 				mockToken.On("CreateToken", mock.Anything, mock.Anything).Return("abcd", "abcd", "")
 			},
 			req: &auth.RegisterRequest{
-				Username:     username,
-				Email:        email,
-				Password:     "password123",
-				FirstName:    "Test",
-				LastName:     "User",
-				Dob:          "2006-01-02",
+				Username:  username,
+				Email:     email,
+				Password:  "password123",
+				FirstName: "Test",
+				LastName:  "User",
+				Dob: &date.Date{
+					Year:  int32(dob.Year()),
+					Month: int32(dob.Month()),
+					Day:   int32(dob.Day()),
+				},
 				PlaceOfBirth: "Jakarta",
 				PhoneNumber:  "081111111111",
 			},
@@ -406,12 +419,16 @@ func TestAuthServiceImpl_RegisterUser_ErrorCases(t *testing.T) {
 				mockToken.On("CreateToken", mock.Anything, mock.Anything).Return("abcd", "abcd", "")
 			},
 			req: &auth.RegisterRequest{
-				Username:     username,
-				Email:        email,
-				Password:     "password123",
-				FirstName:    "Test",
-				LastName:     "User",
-				Dob:          "2006-01-02",
+				Username:  username,
+				Email:     email,
+				Password:  "password123",
+				FirstName: "Test",
+				LastName:  "User",
+				Dob: &date.Date{
+					Year:  int32(dob.Year()),
+					Month: int32(dob.Month()),
+					Day:   int32(dob.Day()),
+				},
 				PlaceOfBirth: "Jakarta",
 				PhoneNumber:  "081111111111",
 			},
@@ -432,12 +449,16 @@ func TestAuthServiceImpl_RegisterUser_ErrorCases(t *testing.T) {
 				mockToken.On("CreateToken", mock.Anything, mock.Anything).Return("abcd", "abcd", "")
 			},
 			req: &auth.RegisterRequest{
-				Username:     username,
-				Email:        email,
-				Password:     "password123",
-				FirstName:    "Test",
-				LastName:     "User",
-				Dob:          "2006-01-02",
+				Username:  username,
+				Email:     email,
+				Password:  "password123",
+				FirstName: "Test",
+				LastName:  "User",
+				Dob: &date.Date{
+					Year:  int32(dob.Year()),
+					Month: int32(dob.Month()),
+					Day:   int32(dob.Day()),
+				},
 				PlaceOfBirth: "Jakarta",
 				PhoneNumber:  "081111111111",
 			},
@@ -459,12 +480,16 @@ func TestAuthServiceImpl_RegisterUser_ErrorCases(t *testing.T) {
 				mockToken.On("CreateToken", mock.Anything, mock.Anything).Return("", "", fmt.Errorf("token creation error"))
 			},
 			req: &auth.RegisterRequest{
-				Username:     username,
-				Email:        email,
-				Password:     "password123",
-				FirstName:    "Test",
-				LastName:     "User",
-				Dob:          "2006-01-02",
+				Username:  username,
+				Email:     email,
+				Password:  "password123",
+				FirstName: "Test",
+				LastName:  "User",
+				Dob: &date.Date{
+					Year:  int32(dob.Year()),
+					Month: int32(dob.Month()),
+					Day:   int32(dob.Day()),
+				},
 				PlaceOfBirth: "Jakarta",
 				PhoneNumber:  "081111111111",
 			},
@@ -485,12 +510,16 @@ func TestAuthServiceImpl_RegisterUser_ErrorCases(t *testing.T) {
 				mockHash.On("Generate", mock.Anything, bcrypt.DefaultCost).Return([]byte("hashedpassword"), nil)
 			},
 			req: &auth.RegisterRequest{
-				Username:     username,
-				Email:        email,
-				Password:     "password123",
-				FirstName:    "Test",
-				LastName:     "User",
-				Dob:          "invalid-date",
+				Username:  username,
+				Email:     email,
+				Password:  "password123",
+				FirstName: "Test",
+				LastName:  "User",
+				Dob: &date.Date{
+					Year:  0,
+					Month: 0,
+					Day:   0,
+				},
 				PlaceOfBirth: "Jakarta",
 				PhoneNumber:  "081111111111",
 			},
@@ -524,12 +553,16 @@ func TestAuthServiceImpl_RegisterUser_ErrorCases(t *testing.T) {
 				mockHash.On("Generate", mock.Anything, bcrypt.DefaultCost).Return([]byte("hashedpassword"), nil)
 			},
 			req: &auth.RegisterRequest{
-				Username:     username,
-				Email:        email,
-				Password:     "password123",
-				FirstName:    "Test",
-				LastName:     "User",
-				Dob:          "2006-01-02",
+				Username:  username,
+				Email:     email,
+				Password:  "password123",
+				FirstName: "Test",
+				LastName:  "User",
+				Dob: &date.Date{
+					Year:  int32(dob.Year()),
+					Month: int32(dob.Month()),
+					Day:   int32(dob.Day()),
+				},
 				PlaceOfBirth: "Jakarta",
 				PhoneNumber:  "081111111111",
 			},
@@ -564,12 +597,16 @@ func TestAuthServiceImpl_RegisterUser_ErrorCases(t *testing.T) {
 				mockToken.On("CreateToken", 1).Return("new_valid_access_token", "valid_refresh_token", nil)
 			},
 			req: &auth.RegisterRequest{
-				Username:     username,
-				Email:        email,
-				Password:     "password123",
-				FirstName:    "Test",
-				LastName:     "User",
-				Dob:          "2006-01-02",
+				Username:  username,
+				Email:     email,
+				Password:  "password123",
+				FirstName: "Test",
+				LastName:  "User",
+				Dob: &date.Date{
+					Year:  int32(dob.Year()),
+					Month: int32(dob.Month()),
+					Day:   int32(dob.Day()),
+				},
 				PlaceOfBirth: "Jakarta",
 				PhoneNumber:  "081111111111",
 			},
