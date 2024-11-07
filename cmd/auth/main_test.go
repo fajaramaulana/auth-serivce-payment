@@ -101,7 +101,9 @@ func TestMainFunction(t *testing.T) {
 	redisClient := redis.NewClient(&redis.Options{
 		Addr: mockRedis.Addr(),
 	})
-	authService := service.NewAuthService(authRepo, mockConfig, mockPassHash, mockToken, mockNotifClient, redisClient)
+
+	rateLimiter := service.NewRateLimiter(redisClient)
+	authService := service.NewAuthService(authRepo, mockConfig, mockPassHash, mockToken, mockNotifClient, rateLimiter)
 
 	// Create the gRPC server and listener
 	grpcServer := grpc.NewServer()

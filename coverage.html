@@ -55,7 +55,7 @@
 			<div id="nav">
 				<select id="files">
 				
-				<option value="file0">github.com/fajaramaulana/auth-serivce-payment/cmd/auth/main.go (77.1%)</option>
+				<option value="file0">github.com/fajaramaulana/auth-serivce-payment/cmd/auth/main.go (77.5%)</option>
 				
 				<option value="file1">github.com/fajaramaulana/auth-serivce-payment/internal/config/config.go (81.8%)</option>
 				
@@ -63,23 +63,25 @@
 				
 				<option value="file3">github.com/fajaramaulana/auth-serivce-payment/internal/repository/auth_repository_impl.go (88.3%)</option>
 				
-				<option value="file4">github.com/fajaramaulana/auth-serivce-payment/internal/service/auth_service_impl.go (78.9%)</option>
+				<option value="file4">github.com/fajaramaulana/auth-serivce-payment/internal/service/auth_service_impl.go (75.0%)</option>
 				
-				<option value="file5">github.com/fajaramaulana/auth-serivce-payment/internal/utils/global.go (30.8%)</option>
+				<option value="file5">github.com/fajaramaulana/auth-serivce-payment/internal/service/ratelimiter_impl.go (75.0%)</option>
 				
-				<option value="file6">github.com/fajaramaulana/auth-serivce-payment/internal/utils/password_utils.go (100.0%)</option>
+				<option value="file6">github.com/fajaramaulana/auth-serivce-payment/internal/utils/global.go (30.8%)</option>
 				
-				<option value="file7">github.com/fajaramaulana/auth-serivce-payment/internal/utils/token.go (78.3%)</option>
+				<option value="file7">github.com/fajaramaulana/auth-serivce-payment/internal/utils/password_utils.go (100.0%)</option>
 				
-				<option value="file8">github.com/fajaramaulana/auth-serivce-payment/mocks/mock_config.go (100.0%)</option>
+				<option value="file8">github.com/fajaramaulana/auth-serivce-payment/internal/utils/token.go (78.3%)</option>
 				
-				<option value="file9">github.com/fajaramaulana/auth-serivce-payment/mocks/mock_database.go (0.0%)</option>
+				<option value="file9">github.com/fajaramaulana/auth-serivce-payment/mocks/mock_config.go (100.0%)</option>
 				
-				<option value="file10">github.com/fajaramaulana/auth-serivce-payment/mocks/mock_hashpassword.go (100.0%)</option>
+				<option value="file10">github.com/fajaramaulana/auth-serivce-payment/mocks/mock_database.go (0.0%)</option>
 				
-				<option value="file11">github.com/fajaramaulana/auth-serivce-payment/mocks/mock_repository.go (12.5%)</option>
+				<option value="file11">github.com/fajaramaulana/auth-serivce-payment/mocks/mock_hashpassword.go (100.0%)</option>
 				
-				<option value="file12">github.com/fajaramaulana/auth-serivce-payment/mocks/mock_token.go (100.0%)</option>
+				<option value="file12">github.com/fajaramaulana/auth-serivce-payment/mocks/mock_repository.go (12.5%)</option>
+				
+				<option value="file13">github.com/fajaramaulana/auth-serivce-payment/mocks/mock_token.go (100.0%)</option>
 				
 				</select>
 			</div>
@@ -175,9 +177,11 @@ func SetupServer(configuration config.Config, db *sql.DB, ListenerFunc func() (n
                 return nil, nil, nil, nil, err
         }</span>
 
+        <span class="cov8" title="1">rateLimiter := service.NewRateLimiter(redisClient)
+
         // Create NotificationServiceClient
-        <span class="cov8" title="1">notificationClient := pb.NewNotificationServiceClient(notificationConn)
-        authService := service.NewAuthService(authRepo, configuration, passwordHasher, tokenHandler, notificationClient, redisClient)
+        notificationClient := pb.NewNotificationServiceClient(notificationConn)
+        authService := service.NewAuthService(authRepo, configuration, passwordHasher, tokenHandler, notificationClient, rateLimiter)
 
         // Initialize gRPC server
         grpcServer := grpc.NewServer()
@@ -539,6 +543,7 @@ import (
         "context"
         "fmt"
         "net/http"
+        "strconv"
         "time"
 
         "github.com/fajaramaulana/auth-serivce-payment/internal/config"
@@ -547,7 +552,6 @@ import (
         "github.com/fajaramaulana/auth-serivce-payment/internal/utils"
         "github.com/fajaramaulana/shared-proto-payment/proto/auth"
         pb "github.com/fajaramaulana/shared-proto-payment/proto/notification"
-        "github.com/go-redis/redis/v8"
         "github.com/sirupsen/logrus"
         "golang.org/x/crypto/bcrypt"
         "google.golang.org/grpc/codes"
@@ -560,25 +564,52 @@ type AuthServiceImpl struct {
         hasher                              utils.PasswordHasher
         token                               utils.TokenHandlerIntf
         notificationClient                  pb.NotificationServiceClient
-        redisClient                         *redis.Client
+        rateLimiter                         *RateLimiter
         auth.UnimplementedAuthServiceServer // embed by value
 }
 
-func NewAuthService(authRepo repository.UserRepository, config config.Config, hasher utils.PasswordHasher, token utils.TokenHandlerIntf, notificationClient pb.NotificationServiceClient, redisClient *redis.Client) auth.AuthServiceServer <span class="cov8" title="1">{
+func NewAuthService(authRepo repository.UserRepository, config config.Config, hasher utils.PasswordHasher, token utils.TokenHandlerIntf, notificationClient pb.NotificationServiceClient, rateLimiter *RateLimiter) auth.AuthServiceServer <span class="cov8" title="1">{
         return &amp;AuthServiceImpl{
                 repo:               authRepo,
                 config:             config,
                 hasher:             hasher,
                 token:              token,
                 notificationClient: notificationClient,
-                redisClient:        redisClient,
+                rateLimiter:        rateLimiter,
         }
 }</span>
 
 func (s *AuthServiceImpl) LoginUser(ctx context.Context, req *auth.LoginRequest) (*auth.LoginResponse, error) <span class="cov8" title="1">{
         logrus.Infof("Login attempt for user: %s", req.GetUsername())
         // Find user by username
-        user, err := s.repo.FindUserByUsername(req.GetUsername())
+        // limit :=
+        limitRatelimiter := s.config.Get("LIMIT_RATELIMITER")
+        limit, err := strconv.Atoi(limitRatelimiter)
+        if err != nil </span><span class="cov0" title="0">{
+                logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error getting limit ratelimiter: %v", err)
+                return &amp;auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, status.Error(codes.Internal, "internal server error")
+        }</span>
+
+        <span class="cov8" title="1">periodRateLimiter := s.config.Get("PERIOD_RATELIMITER")
+        // convert to time.Duration
+        period, err := time.ParseDuration(periodRateLimiter)
+        if err != nil </span><span class="cov0" title="0">{
+                logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error getting period ratelimiter: %v", err)
+                return &amp;auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, status.Error(codes.Internal, "internal server error")
+        }</span>
+
+        <span class="cov8" title="1">isAllowed, err := s.rateLimiter.IsAllowed(ctx, req.GetUsername(), limit, period)
+        if err != nil </span><span class="cov0" title="0">{
+                logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error checking rate limit: %v", err)
+                return &amp;auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, status.Error(codes.Internal, "internal server error")
+        }</span>
+
+        <span class="cov8" title="1">if !isAllowed </span><span class="cov0" title="0">{
+                logrus.Warn("Rate limit exceeded")
+                return &amp;auth.LoginResponse{Status: http.StatusTooManyRequests, Message: "Rate limit exceeded", AccessToken: "", RefreshToken: ""}, status.Error(codes.ResourceExhausted, "rate limit exceeded")
+        }</span>
+
+        <span class="cov8" title="1">user, err := s.repo.FindUserByUsername(req.GetUsername())
         if err != nil </span><span class="cov8" title="1">{
                 logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error finding user: %v", err)
                 return &amp;auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Invalid credentials", AccessToken: "", RefreshToken: ""}, status.Error(codes.Internal, "internal server error")
@@ -765,7 +796,56 @@ func (s *AuthServiceImpl) RefreshToken(ctx context.Context, req *auth.RefreshTok
 }
 </pre>
 		
-		<pre class="file" id="file5" style="display: none">package utils
+		<pre class="file" id="file5" style="display: none">package service
+
+import (
+        "context"
+        "fmt"
+        "time"
+
+        "github.com/go-redis/redis/v8"
+)
+
+type RateLimiter struct {
+        client *redis.Client
+}
+
+func NewRateLimiter(client *redis.Client) *RateLimiter <span class="cov8" title="1">{
+        return &amp;RateLimiter{
+                client: client,
+        }
+}</span>
+
+// IsAllowed checks if the user has exceeded the rate limit based on their unique identifier
+func (rl *RateLimiter) IsAllowed(ctx context.Context, identifier string, limit int, period time.Duration) (bool, error) <span class="cov8" title="1">{
+        // Create a unique Redis key based on the identifier (e.g., username or IP)
+        key := fmt.Sprintf("login_attempts:%s", identifier)
+
+        // Increment the login attempt counter in Redis
+        count, err := rl.client.Incr(ctx, key).Result()
+        if err != nil </span><span class="cov0" title="0">{
+                return false, fmt.Errorf("error incrementing Redis counter: %v", err)
+        }</span>
+
+        // Set expiration if this is the first attempt
+        <span class="cov8" title="1">if count == 1 </span><span class="cov8" title="1">{
+                // Set the expiration time to the limit period (e.g., 1 minute)
+                err := rl.client.Expire(ctx, key, period).Err()
+                if err != nil </span><span class="cov0" title="0">{
+                        return false, fmt.Errorf("error setting expiration on Redis key: %v", err)
+                }</span>
+        }
+
+        // Check if the attempts exceed the limit
+        <span class="cov8" title="1">if count &gt; int64(limit) </span><span class="cov0" title="0">{
+                return false, nil // Block the attempt
+        }</span>
+
+        <span class="cov8" title="1">return true, nil</span> // Allow the attempt
+}
+</pre>
+		
+		<pre class="file" id="file6" style="display: none">package utils
 
 import (
         "time"
@@ -816,7 +896,7 @@ func CheckAndCovertToDate(dateStr string) (string, error) <span class="cov0" tit
 }
 </pre>
 		
-		<pre class="file" id="file6" style="display: none">package utils
+		<pre class="file" id="file7" style="display: none">package utils
 
 import "golang.org/x/crypto/bcrypt"
 
@@ -835,7 +915,7 @@ func (h BcryptHasher) Generate(password []byte, cost int) ([]byte, error) <span 
 }</span>
 </pre>
 		
-		<pre class="file" id="file7" style="display: none">package utils
+		<pre class="file" id="file8" style="display: none">package utils
 
 import (
         "fmt"
@@ -935,7 +1015,7 @@ func (t TokenHandler) CheckToken(tokenString string) (*CustomClaims, error) <spa
 }
 </pre>
 		
-		<pre class="file" id="file8" style="display: none">package mocks
+		<pre class="file" id="file9" style="display: none">package mocks
 
 import "github.com/stretchr/testify/mock"
 
@@ -951,7 +1031,7 @@ func (m *MockConfig) Get(key string) string <span class="cov8" title="1">{
 }</span>
 </pre>
 		
-		<pre class="file" id="file9" style="display: none">package mocks
+		<pre class="file" id="file10" style="display: none">package mocks
 
 import "github.com/stretchr/testify/mock"
 
@@ -966,7 +1046,7 @@ func (m *MockDatabase) Close() error <span class="cov0" title="0">{
 }</span>
 </pre>
 		
-		<pre class="file" id="file10" style="display: none">package mocks
+		<pre class="file" id="file11" style="display: none">package mocks
 
 import "github.com/stretchr/testify/mock"
 
@@ -985,7 +1065,7 @@ func (m *MockPasswordHasher) Generate(password []byte, cost int) ([]byte, error)
 }
 </pre>
 		
-		<pre class="file" id="file11" style="display: none">package mocks
+		<pre class="file" id="file12" style="display: none">package mocks
 
 import (
         "database/sql"
@@ -1039,7 +1119,7 @@ func (m *MockRepository) FindUserByUsername(username string) (*model.GetUserPass
 }</span>
 </pre>
 		
-		<pre class="file" id="file12" style="display: none">package mocks
+		<pre class="file" id="file13" style="display: none">package mocks
 
 import (
         "github.com/fajaramaulana/auth-serivce-payment/internal/utils"

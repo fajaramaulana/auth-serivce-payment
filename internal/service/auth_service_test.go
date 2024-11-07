@@ -38,6 +38,8 @@ func TestAuthServiceImpl_LoginUser(t *testing.T) {
 	mockConfig := new(mocks.MockConfig)
 	mockPassHash := new(mocks.MockPasswordHasher)
 	mockToken := new(mocks.MockTokenHandler)
+	mockConfig.On("Get", "LIMIT_RATELIMITER").Return("5")
+	mockConfig.On("Get", "PERIOD_RATELIMITER").Return("1m")
 	mockConfig.On("Get", "JWT_SECRET").Return("secret")
 	mockConfig.On("Get", "ENV").Return("test")
 	mockRepo := repository.NewUserRepository(db, mockConfig)
@@ -54,7 +56,8 @@ func TestAuthServiceImpl_LoginUser(t *testing.T) {
 	})
 
 	// Initialize service with mocks
-	authService := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient, redisClient)
+	rateLimiter := service.NewRateLimiter(redisClient)
+	authService := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient, rateLimiter)
 
 	// Hash password to match what LoginUser will expect
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
@@ -112,6 +115,8 @@ func TestAuthServiceImpl_LoginUser_ErrorCases(t *testing.T) {
 	mockToken := new(mocks.MockTokenHandler)
 	mockConfig.On("Get", "JWT_SECRET").Return("secret")
 	mockConfig.On("Get", "ENV").Return("test")
+	mockConfig.On("Get", "LIMIT_RATELIMITER").Return("5")
+	mockConfig.On("Get", "PERIOD_RATELIMITER").Return("1m")
 	mockRepo := repository.NewUserRepository(db, mockConfig)
 	mockNotifClient := new(mockGrpc.NotificationServiceClient)
 
@@ -126,7 +131,8 @@ func TestAuthServiceImpl_LoginUser_ErrorCases(t *testing.T) {
 		Addr: mockRedis.Addr(),
 	})
 
-	authService := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient, redisClient)
+	rateLimiter := service.NewRateLimiter(redisClient)
+	authService := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient, rateLimiter)
 
 	username := "testuser1"
 	// hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
@@ -156,6 +162,8 @@ func TestAuthServiceImpl_LoginUser_UserNotFound(t *testing.T) {
 	mockToken := new(mocks.MockTokenHandler)
 	mockConfig.On("Get", "JWT_SECRET").Return("secret")
 	mockConfig.On("Get", "ENV").Return("test")
+	mockConfig.On("Get", "LIMIT_RATELIMITER").Return("5")
+	mockConfig.On("Get", "PERIOD_RATELIMITER").Return("1m")
 	mockRepo := repository.NewUserRepository(db, mockConfig)
 	mockNotifClient := new(mockGrpc.NotificationServiceClient)
 
@@ -169,7 +177,8 @@ func TestAuthServiceImpl_LoginUser_UserNotFound(t *testing.T) {
 		Addr: mockRedis.Addr(),
 	})
 
-	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient, redisClient)
+	rateLimiter := service.NewRateLimiter(redisClient)
+	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient, rateLimiter)
 
 	// Scenario: User Not Found
 	req := &auth.LoginRequest{Username: "nonexistentuser", Password: "password123"}
@@ -209,6 +218,8 @@ func TestAuthServiceImpl_LoginUser_PasswordMismatch(t *testing.T) {
 
 	mockConfig.On("Get", "JWT_SECRET").Return("secret")
 	mockConfig.On("Get", "ENV").Return("test")
+	mockConfig.On("Get", "LIMIT_RATELIMITER").Return("5")
+	mockConfig.On("Get", "PERIOD_RATELIMITER").Return("1m")
 	mockRepo := repository.NewUserRepository(db, mockConfig)
 	mockNotifClient := new(mockGrpc.NotificationServiceClient)
 
@@ -222,7 +233,8 @@ func TestAuthServiceImpl_LoginUser_PasswordMismatch(t *testing.T) {
 		Addr: mockRedis.Addr(),
 	})
 
-	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient, redisClient)
+	rateLimiter := service.NewRateLimiter(redisClient)
+	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient, rateLimiter)
 
 	// Prepare the hashed password
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
@@ -266,6 +278,8 @@ func TestAuthServiceImpl_LoginUser_TokenCreationError(t *testing.T) {
 
 	mockConfig.On("Get", "JWT_SECRET").Return("secret")
 	mockConfig.On("Get", "ENV").Return("test")
+	mockConfig.On("Get", "LIMIT_RATELIMITER").Return("5")
+	mockConfig.On("Get", "PERIOD_RATELIMITER").Return("1m")
 	mockRepo := repository.NewUserRepository(db, mockConfig)
 	mockNotifClient := new(mockGrpc.NotificationServiceClient)
 
@@ -279,7 +293,8 @@ func TestAuthServiceImpl_LoginUser_TokenCreationError(t *testing.T) {
 		Addr: mockRedis.Addr(),
 	})
 
-	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient, redisClient)
+	rateLimiter := service.NewRateLimiter(redisClient)
+	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient, rateLimiter)
 
 	// Prepare the hashed password
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
@@ -339,7 +354,8 @@ func TestAuthServiceImpl_RegisterUser(t *testing.T) {
 		Addr: mockRedis.Addr(),
 	})
 
-	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient, redisClient)
+	rateLimiter := service.NewRateLimiter(redisClient)
+	service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient, rateLimiter)
 
 	username := "testuser"
 	email := "test@example.com"
@@ -726,7 +742,8 @@ func TestAuthServiceImpl_RegisterUser_ErrorCases(t *testing.T) {
 				Addr: mockRedis.Addr(),
 			})
 
-			service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient, redisClient)
+			rateLimiter := service.NewRateLimiter(redisClient)
+			service := service.NewAuthService(mockRepo, mockConfig, mockPassHash, mockToken, mockNotifClient, rateLimiter)
 
 			tt.setupSqlMock(mockDb)
 
@@ -838,7 +855,9 @@ func TestAuthServiceImpl_RefreshToken(t *testing.T) {
 			redisClient := redis.NewClient(&redis.Options{
 				Addr: mockRedis.Addr(),
 			})
-			authService := service.NewAuthService(mockRepository, mockConfig, nil, mockTokenHandler, mockNotifClient, redisClient)
+
+			rateLimiter := service.NewRateLimiter(redisClient)
+			authService := service.NewAuthService(mockRepository, mockConfig, nil, mockTokenHandler, mockNotifClient, rateLimiter)
 
 			// Call RefreshToken and validate response
 			res, err := authService.RefreshToken(context.Background(), tt.req)

@@ -6,7 +6,7 @@ require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/alicebob/miniredis/v2 v2.33.0
 	github.com/cenkalti/backoff/v4 v4.3.0
-	github.com/fajaramaulana/shared-proto-payment v0.0.16
+	github.com/fajaramaulana/shared-proto-payment v0.0.18
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/go-sql-driver/mysql v1.8.1
 	github.com/golang-jwt/jwt/v5 v5.2.1

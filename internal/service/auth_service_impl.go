@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/fajaramaulana/auth-serivce-payment/internal/config"
@@ -12,7 +13,6 @@ import (
 	"github.com/fajaramaulana/auth-serivce-payment/internal/utils"
 	"github.com/fajaramaulana/shared-proto-payment/proto/auth"
 	pb "github.com/fajaramaulana/shared-proto-payment/proto/notification"
-	"github.com/go-redis/redis/v8"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/grpc/codes"
@@ -25,24 +25,51 @@ type AuthServiceImpl struct {
 	hasher                              utils.PasswordHasher
 	token                               utils.TokenHandlerIntf
 	notificationClient                  pb.NotificationServiceClient
-	redisClient                         *redis.Client
+	rateLimiter                         *RateLimiter
 	auth.UnimplementedAuthServiceServer // embed by value
 }
 
-func NewAuthService(authRepo repository.UserRepository, config config.Config, hasher utils.PasswordHasher, token utils.TokenHandlerIntf, notificationClient pb.NotificationServiceClient, redisClient *redis.Client) auth.AuthServiceServer {
+func NewAuthService(authRepo repository.UserRepository, config config.Config, hasher utils.PasswordHasher, token utils.TokenHandlerIntf, notificationClient pb.NotificationServiceClient, rateLimiter *RateLimiter) auth.AuthServiceServer {
 	return &AuthServiceImpl{
 		repo:               authRepo,
 		config:             config,
 		hasher:             hasher,
 		token:              token,
 		notificationClient: notificationClient,
-		redisClient:        redisClient,
+		rateLimiter:        rateLimiter,
 	}
 }
 
 func (s *AuthServiceImpl) LoginUser(ctx context.Context, req *auth.LoginRequest) (*auth.LoginResponse, error) {
 	logrus.Infof("Login attempt for user: %s", req.GetUsername())
 	// Find user by username
+	// limit :=
+	limitRatelimiter := s.config.Get("LIMIT_RATELIMITER")
+	limit, err := strconv.Atoi(limitRatelimiter)
+	if err != nil {
+		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error getting limit ratelimiter: %v", err)
+		return &auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, status.Error(codes.Internal, "internal server error")
+	}
+
+	periodRateLimiter := s.config.Get("PERIOD_RATELIMITER")
+	// convert to time.Duration
+	period, err := time.ParseDuration(periodRateLimiter)
+	if err != nil {
+		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error getting period ratelimiter: %v", err)
+		return &auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, status.Error(codes.Internal, "internal server error")
+	}
+
+	isAllowed, err := s.rateLimiter.IsAllowed(ctx, req.GetUsername(), limit, period)
+	if err != nil {
+		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error checking rate limit: %v", err)
+		return &auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, status.Error(codes.Internal, "internal server error")
+	}
+
+	if !isAllowed {
+		logrus.Warn("Rate limit exceeded")
+		return &auth.LoginResponse{Status: http.StatusTooManyRequests, Message: "Rate limit exceeded", AccessToken: "", RefreshToken: ""}, status.Error(codes.ResourceExhausted, "rate limit exceeded")
+	}
+
 	user, err := s.repo.FindUserByUsername(req.GetUsername())
 	if err != nil {
 		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error finding user: %v", err)
@@ -78,9 +105,10 @@ func (s *AuthServiceImpl) LoginUser(ctx context.Context, req *auth.LoginRequest)
 		Message:   "Login successful",
 		Title:     "Someone logged in on your account",
 		Type:      "alert",
-		IpAddress: "123131",
-		UserAgent: "asdadada",
+		IpAddress: req.GetIpAddress(),
+		UserAgent: req.UserAgent,
 		Timestamp: utils.ConvertToDateTime(time.Now()),
+		TypeId:    "1",
 	})
 
 	if err != nil {
@@ -179,9 +207,10 @@ func (s *AuthServiceImpl) RegisterUser(ctx context.Context, req *auth.RegisterRe
 		Message:   "Registration successful",
 		Title:     "Welcome to the platform",
 		Type:      "alert",
-		IpAddress: "123131",
-		UserAgent: "asdadada",
+		IpAddress: req.GetIpAddress(),
+		UserAgent: req.GetUserAgent(),
 		Timestamp: utils.ConvertToDateTime(time.Now()),
+		TypeId:    "2",
 	})
 
 	if err != nil {

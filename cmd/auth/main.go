@@ -80,9 +80,11 @@ func SetupServer(configuration config.Config, db *sql.DB, ListenerFunc func() (n
 		return nil, nil, nil, nil, err
 	}
 
+	rateLimiter := service.NewRateLimiter(redisClient)
+
 	// Create NotificationServiceClient
 	notificationClient := pb.NewNotificationServiceClient(notificationConn)
-	authService := service.NewAuthService(authRepo, configuration, passwordHasher, tokenHandler, notificationClient, redisClient)
+	authService := service.NewAuthService(authRepo, configuration, passwordHasher, tokenHandler, notificationClient, rateLimiter)
 
 	// Initialize gRPC server
 	grpcServer := grpc.NewServer()
