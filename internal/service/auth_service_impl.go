@@ -73,18 +73,18 @@ func (s *AuthServiceImpl) LoginUser(ctx context.Context, req *auth.LoginRequest)
 	user, err := s.repo.FindUserByUsername(req.GetUsername())
 	if err != nil {
 		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error finding user: %v", err)
-		return &auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Invalid credentials", AccessToken: "", RefreshToken: ""}, status.Error(codes.Internal, "internal server error")
+		return &auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Error when find user", AccessToken: "", RefreshToken: ""}, status.Error(codes.Internal, "internal server error")
 	}
 
 	if user == nil {
 		logrus.Warn("User not found")
-		return &auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Invalid credentials", AccessToken: "", RefreshToken: ""}, status.Error(codes.Unauthenticated, "invalid credentials")
+		return &auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Username not found", AccessToken: "", RefreshToken: ""}, status.Error(codes.Unauthenticated, "Username not found")
 	}
 
 	// Compare password
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.GetPassword())); err != nil {
 		logrus.Warn("Password mismatch")
-		return &auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Invalid credentials", AccessToken: "", RefreshToken: ""}, status.Error(codes.Unauthenticated, "invalid credentials")
+		return &auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Invalid Password", AccessToken: "", RefreshToken: ""}, status.Error(codes.Unauthenticated, "Invalid Password")
 	}
 
 	accessToken, refreshToken, err := s.token.CreateToken(user.ID)

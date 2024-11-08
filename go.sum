@@ -23,6 +23,8 @@ github.com/fajaramaulana/shared-proto-payment v0.0.17 h1:GrDHXNF5oJ08SVn40TfVJDA
 github.com/fajaramaulana/shared-proto-payment v0.0.17/go.mod h1:XlWfdKBeqzGs1I7AvnzVdUfaIvO0zAPRW8zRX1kBem0=
 github.com/fajaramaulana/shared-proto-payment v0.0.18 h1:AVQtImfnqy9zU81Bcout29kE8QQwcndZhSHpYsE4inQ=
 github.com/fajaramaulana/shared-proto-payment v0.0.18/go.mod h1:XlWfdKBeqzGs1I7AvnzVdUfaIvO0zAPRW8zRX1kBem0=
+github.com/fajaramaulana/shared-proto-payment v0.0.19 h1:QrD8TGQ2iyRdhQTQgOC5rWFYougmae5wvPiiqNGXDpQ=
+github.com/fajaramaulana/shared-proto-payment v0.0.19/go.mod h1:XlWfdKBeqzGs1I7AvnzVdUfaIvO0zAPRW8zRX1kBem0=
 github.com/fsnotify/fsnotify v1.4.9 h1:hsms1Qyu0jgnwNXIxa+/V/PDsU6CfLf6CNO8H7IWoS4=
 github.com/fsnotify/fsnotify v1.4.9/go.mod h1:znqG4EE+3YCdAaPaxE2ZRY/06pZUdp0tY4IgpuI1SZQ=
 github.com/go-redis/redis/v8 v8.11.5 h1:AcZZR7igkdvfVmQTPnu9WE37LRrO/YrBH5zWyjDC0oI=
