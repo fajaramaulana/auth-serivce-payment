@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/fajaramaulana/auth-serivce-payment/internal/config"
@@ -24,37 +25,66 @@ type AuthServiceImpl struct {
 	hasher                              utils.PasswordHasher
 	token                               utils.TokenHandlerIntf
 	notificationClient                  pb.NotificationServiceClient
+	rateLimiter                         *RateLimiter
 	auth.UnimplementedAuthServiceServer // embed by value
 }
 
-func NewAuthService(authRepo repository.UserRepository, config config.Config, hasher utils.PasswordHasher, token utils.TokenHandlerIntf, notificationClient pb.NotificationServiceClient) auth.AuthServiceServer {
+func NewAuthService(authRepo repository.UserRepository, config config.Config, hasher utils.PasswordHasher, token utils.TokenHandlerIntf, notificationClient pb.NotificationServiceClient, rateLimiter *RateLimiter) auth.AuthServiceServer {
 	return &AuthServiceImpl{
 		repo:               authRepo,
 		config:             config,
 		hasher:             hasher,
 		token:              token,
 		notificationClient: notificationClient,
+		rateLimiter:        rateLimiter,
 	}
 }
 
 func (s *AuthServiceImpl) LoginUser(ctx context.Context, req *auth.LoginRequest) (*auth.LoginResponse, error) {
 	logrus.Infof("Login attempt for user: %s", req.GetUsername())
 	// Find user by username
+	// limit :=
+	limitRatelimiter := s.config.Get("LIMIT_RATELIMITER")
+	limit, err := strconv.Atoi(limitRatelimiter)
+	if err != nil {
+		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error getting limit ratelimiter: %v", err)
+		return &auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, status.Error(codes.Internal, "internal server error")
+	}
+
+	periodRateLimiter := s.config.Get("PERIOD_RATELIMITER")
+	// convert to time.Duration
+	period, err := time.ParseDuration(periodRateLimiter)
+	if err != nil {
+		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error getting period ratelimiter: %v", err)
+		return &auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, status.Error(codes.Internal, "internal server error")
+	}
+
+	isAllowed, err := s.rateLimiter.IsAllowed(ctx, req.GetUsername(), limit, period)
+	if err != nil {
+		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error checking rate limit: %v", err)
+		return &auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, status.Error(codes.Internal, "internal server error")
+	}
+
+	if !isAllowed {
+		logrus.Warn("Rate limit exceeded")
+		return &auth.LoginResponse{Status: http.StatusTooManyRequests, Message: "Rate limit exceeded", AccessToken: "", RefreshToken: ""}, status.Error(codes.ResourceExhausted, "rate limit exceeded")
+	}
+
 	user, err := s.repo.FindUserByUsername(req.GetUsername())
 	if err != nil {
 		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error finding user: %v", err)
-		return &auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Invalid credentials", AccessToken: "", RefreshToken: ""}, status.Error(codes.Internal, "internal server error")
+		return &auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Error when find user", AccessToken: "", RefreshToken: ""}, status.Error(codes.Internal, "internal server error")
 	}
 
 	if user == nil {
 		logrus.Warn("User not found")
-		return &auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Invalid credentials", AccessToken: "", RefreshToken: ""}, status.Error(codes.Unauthenticated, "invalid credentials")
+		return &auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Username not found", AccessToken: "", RefreshToken: ""}, status.Error(codes.Unauthenticated, "Username not found")
 	}
 
 	// Compare password
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.GetPassword())); err != nil {
 		logrus.Warn("Password mismatch")
-		return &auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Invalid credentials", AccessToken: "", RefreshToken: ""}, status.Error(codes.Unauthenticated, "invalid credentials")
+		return &auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Invalid Password", AccessToken: "", RefreshToken: ""}, status.Error(codes.Unauthenticated, "Invalid Password")
 	}
 
 	accessToken, refreshToken, err := s.token.CreateToken(user.ID)
@@ -75,9 +105,10 @@ func (s *AuthServiceImpl) LoginUser(ctx context.Context, req *auth.LoginRequest)
 		Message:   "Login successful",
 		Title:     "Someone logged in on your account",
 		Type:      "alert",
-		IpAddress: "123131",
-		UserAgent: "asdadada",
+		IpAddress: req.GetIpAddress(),
+		UserAgent: req.UserAgent,
 		Timestamp: utils.ConvertToDateTime(time.Now()),
+		TypeId:    "1",
 	})
 
 	if err != nil {
@@ -124,14 +155,15 @@ func (s *AuthServiceImpl) RegisterUser(ctx context.Context, req *auth.RegisterRe
 	hashedPassword, err := s.hasher.Generate([]byte(req.GetPassword()), bcrypt.DefaultCost)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error hashing password: %v", err)
-		return nil, fmt.Errorf("internal server error") // Early return on error
+		return nil, fmt.Errorf("internal server error %v", err)
 	}
 
 	// covert req.GetDob() to time.Time
-	dob, err := time.Parse("2006-01-02", req.GetDob().String())
+	dobStr := fmt.Sprintf("%d-%02d-%02d", req.GetDob().GetYear(), req.GetDob().GetMonth(), req.GetDob().GetDay())
+	dob, err := time.Parse("2006-01-02", dobStr)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error parsing dob: %v", err)
-		return nil, fmt.Errorf("internal server error")
+		return nil, fmt.Errorf("internal server error %v", err)
 	}
 
 	// Create user
@@ -175,9 +207,10 @@ func (s *AuthServiceImpl) RegisterUser(ctx context.Context, req *auth.RegisterRe
 		Message:   "Registration successful",
 		Title:     "Welcome to the platform",
 		Type:      "alert",
-		IpAddress: "123131",
-		UserAgent: "asdadada",
+		IpAddress: req.GetIpAddress(),
+		UserAgent: req.GetUserAgent(),
 		Timestamp: utils.ConvertToDateTime(time.Now()),
+		TypeId:    "2",
 	})
 
 	if err != nil {

@@ -55,7 +55,7 @@
 			<div id="nav">
 				<select id="files">
 				
-				<option value="file0">github.com/fajaramaulana/auth-serivce-payment/cmd/auth/main.go (76.1%)</option>
+				<option value="file0">github.com/fajaramaulana/auth-serivce-payment/cmd/auth/main.go (77.5%)</option>
 				
 				<option value="file1">github.com/fajaramaulana/auth-serivce-payment/internal/config/config.go (81.8%)</option>
 				
@@ -63,23 +63,25 @@
 				
 				<option value="file3">github.com/fajaramaulana/auth-serivce-payment/internal/repository/auth_repository_impl.go (88.3%)</option>
 				
-				<option value="file4">github.com/fajaramaulana/auth-serivce-payment/internal/service/auth_service_impl.go (85.4%)</option>
+				<option value="file4">github.com/fajaramaulana/auth-serivce-payment/internal/service/auth_service_impl.go (75.0%)</option>
 				
-				<option value="file5">github.com/fajaramaulana/auth-serivce-payment/internal/utils/global.go (100.0%)</option>
+				<option value="file5">github.com/fajaramaulana/auth-serivce-payment/internal/service/ratelimiter_impl.go (75.0%)</option>
 				
-				<option value="file6">github.com/fajaramaulana/auth-serivce-payment/internal/utils/password_utils.go (100.0%)</option>
+				<option value="file6">github.com/fajaramaulana/auth-serivce-payment/internal/utils/global.go (30.8%)</option>
 				
-				<option value="file7">github.com/fajaramaulana/auth-serivce-payment/internal/utils/token.go (78.3%)</option>
+				<option value="file7">github.com/fajaramaulana/auth-serivce-payment/internal/utils/password_utils.go (100.0%)</option>
 				
-				<option value="file8">github.com/fajaramaulana/auth-serivce-payment/mocks/mock_config.go (100.0%)</option>
+				<option value="file8">github.com/fajaramaulana/auth-serivce-payment/internal/utils/token.go (78.3%)</option>
 				
-				<option value="file9">github.com/fajaramaulana/auth-serivce-payment/mocks/mock_database.go (0.0%)</option>
+				<option value="file9">github.com/fajaramaulana/auth-serivce-payment/mocks/mock_config.go (100.0%)</option>
 				
-				<option value="file10">github.com/fajaramaulana/auth-serivce-payment/mocks/mock_hashpassword.go (100.0%)</option>
+				<option value="file10">github.com/fajaramaulana/auth-serivce-payment/mocks/mock_database.go (0.0%)</option>
 				
-				<option value="file11">github.com/fajaramaulana/auth-serivce-payment/mocks/mock_repository.go (12.5%)</option>
+				<option value="file11">github.com/fajaramaulana/auth-serivce-payment/mocks/mock_hashpassword.go (100.0%)</option>
 				
-				<option value="file12">github.com/fajaramaulana/auth-serivce-payment/mocks/mock_token.go (100.0%)</option>
+				<option value="file12">github.com/fajaramaulana/auth-serivce-payment/mocks/mock_repository.go (12.5%)</option>
+				
+				<option value="file13">github.com/fajaramaulana/auth-serivce-payment/mocks/mock_token.go (100.0%)</option>
 				
 				</select>
 			</div>
@@ -102,13 +104,16 @@ import (
         "io"
         "net"
         "os"
+        "time"
 
+        "github.com/cenkalti/backoff/v4"
         "github.com/fajaramaulana/auth-serivce-payment/internal/config"
         "github.com/fajaramaulana/auth-serivce-payment/internal/repository"
         "github.com/fajaramaulana/auth-serivce-payment/internal/service"
         "github.com/fajaramaulana/auth-serivce-payment/internal/utils"
         "github.com/fajaramaulana/shared-proto-payment/proto/auth"
         pb "github.com/fajaramaulana/shared-proto-payment/proto/notification"
+        "github.com/go-redis/redis/v8"
         "github.com/natefinch/lumberjack"
         "github.com/sirupsen/logrus"
         "google.golang.org/grpc"
@@ -145,7 +150,7 @@ func init() <span class="cov8" title="1">{
         logrus.SetFormatter(&amp;logrus.JSONFormatter{})</span>
 }
 
-func SetupServer(configuration config.Config, db *sql.DB, ListenerFunc func() (net.Listener, error)) (*grpc.Server, net.Listener, error) <span class="cov8" title="1">{
+func SetupServer(configuration config.Config, db *sql.DB, ListenerFunc func() (net.Listener, error)) (*grpc.Server, *grpc.ClientConn, net.Listener, *redis.Client, error) <span class="cov8" title="1">{
         // Initialize repository and service handler
         authRepo := repository.NewUserRepository(db, configuration)
         passwordHasher := utils.NewPasswordHasher()
@@ -154,21 +159,29 @@ func SetupServer(configuration config.Config, db *sql.DB, ListenerFunc func() (n
         notificationTarget := configuration.Get("NOTIFICATION_TARGET")
 
         // Setup for Notification Service client
+        // Setup for Notification Service client
         notificationConn, err := grpc.NewClient(notificationTarget, grpc.WithInsecure(), grpc.WithBlock(),
                 grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) </span><span class="cov0" title="0">{
                         d := net.Dialer{}
+                        logrus.Infof("Dialing to %s", addr)
                         return d.DialContext(ctx, "tcp", addr)
                 }</span>))
 
         <span class="cov8" title="1">if err != nil </span><span class="cov0" title="0">{
                 // Handle connection error
-                return nil, nil, err
+                return nil, nil, nil, nil, err
         }</span>
-        <span class="cov8" title="1">defer notificationConn.Close()
+
+        <span class="cov8" title="1">redisClient, err := SetupRedisRetry(configuration)
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, nil, nil, nil, err
+        }</span>
+
+        <span class="cov8" title="1">rateLimiter := service.NewRateLimiter(redisClient)
 
         // Create NotificationServiceClient
         notificationClient := pb.NewNotificationServiceClient(notificationConn)
-        authService := service.NewAuthService(authRepo, configuration, passwordHasher, tokenHandler, notificationClient)
+        authService := service.NewAuthService(authRepo, configuration, passwordHasher, tokenHandler, notificationClient, rateLimiter)
 
         // Initialize gRPC server
         grpcServer := grpc.NewServer()
@@ -180,10 +193,10 @@ func SetupServer(configuration config.Config, db *sql.DB, ListenerFunc func() (n
         // Set up listener
         listener, err := ListenerFunc()
         if err != nil </span><span class="cov8" title="1">{
-                return nil, nil, err
+                return nil, nil, nil, nil, err
         }</span>
 
-        <span class="cov8" title="1">return grpcServer, listener, nil</span>
+        <span class="cov8" title="1">return grpcServer, notificationConn, listener, redisClient, nil</span>
 }
 
 func main() <span class="cov0" title="0">{
@@ -207,20 +220,65 @@ func run(config config.Config, connectDB func(config.Config) (*sql.DB, error), c
         }()
 
         // Set up the gRPC server and listener
-        <span class="cov8" title="1">grpcServer, listener, err := SetupServer(config, db, createListener)
+        <span class="cov8" title="1">grpcServer, grpcClient, listener, redisClient, err := SetupServer(config, db, createListener)
         if err != nil </span><span class="cov8" title="1">{
                 return fmt.Errorf("failed to set up server: %w", err)
         }</span>
         <span class="cov8" title="1">defer listener.Close()
 
+        defer func() </span><span class="cov0" title="0">{
+                if err := grpcClient.Close(); err != nil </span><span class="cov0" title="0">{
+                        logrus.Errorf("Failed to close notification connection: %v", err)
+                }</span>
+        }()
+
+        <span class="cov8" title="1">defer func() </span><span class="cov0" title="0">{
+                if err := redisClient.Close(); err != nil </span><span class="cov0" title="0">{
+                        logrus.Errorf("Failed to close Redis connection: %v", err)
+                }</span>
+        }()
+
         // Start serving the gRPC server
-        logrus.Info("Starting gRPC server...")
+        <span class="cov8" title="1">logrus.Info("Starting gRPC server...")
         logrus.Infof("gRPC server started successfully on port: %s", listener.Addr().String())
         if err := grpcServer.Serve(listener); err != nil </span><span class="cov0" title="0">{
                 return fmt.Errorf("failed to serve gRPC server: %w", err)
         }</span>
 
         <span class="cov0" title="0">return nil</span>
+}
+
+func SetupRedisRetry(config config.Config) (*redis.Client, error) <span class="cov8" title="1">{
+        var redisClient *redis.Client
+        operation := func() error </span><span class="cov8" title="1">{
+                // Initialize Redis client
+                redisClient = redis.NewClient(&amp;redis.Options{
+                        Addr: config.Get("REDIS_HOST"),
+                        DB:   0,
+                })
+
+                // Attempt to ping Redis to verify the connection
+                _, err := redisClient.Ping(context.Background()).Result()
+                if err != nil </span><span class="cov8" title="1">{
+                        logrus.Warnf("Failed to connect to Redis: %v", err)
+                        return err // Return error to trigger a retry
+                }</span>
+
+                <span class="cov8" title="1">logrus.Info("Connected to Redis successfully")
+                return nil</span> // Success
+        }
+
+        // Define exponential backoff with the `backoff` package
+        <span class="cov8" title="1">expBackoff := backoff.NewExponentialBackOff()
+        expBackoff.MaxElapsedTime = 30 * time.Second // Customize max elapsed time
+
+        // Retry operation with backoff
+        err := backoff.Retry(operation, expBackoff)
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("failed to connect to Redis after retries: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">return redisClient, nil</span>
 }
 </pre>
 		
@@ -485,6 +543,7 @@ import (
         "context"
         "fmt"
         "net/http"
+        "strconv"
         "time"
 
         "github.com/fajaramaulana/auth-serivce-payment/internal/config"
@@ -505,60 +564,103 @@ type AuthServiceImpl struct {
         hasher                              utils.PasswordHasher
         token                               utils.TokenHandlerIntf
         notificationClient                  pb.NotificationServiceClient
+        rateLimiter                         *RateLimiter
         auth.UnimplementedAuthServiceServer // embed by value
 }
 
-func NewAuthService(authRepo repository.UserRepository, config config.Config, hasher utils.PasswordHasher, token utils.TokenHandlerIntf, notificationClient pb.NotificationServiceClient) auth.AuthServiceServer <span class="cov8" title="1">{
+func NewAuthService(authRepo repository.UserRepository, config config.Config, hasher utils.PasswordHasher, token utils.TokenHandlerIntf, notificationClient pb.NotificationServiceClient, rateLimiter *RateLimiter) auth.AuthServiceServer <span class="cov8" title="1">{
         return &amp;AuthServiceImpl{
                 repo:               authRepo,
                 config:             config,
                 hasher:             hasher,
                 token:              token,
                 notificationClient: notificationClient,
+                rateLimiter:        rateLimiter,
         }
 }</span>
 
 func (s *AuthServiceImpl) LoginUser(ctx context.Context, req *auth.LoginRequest) (*auth.LoginResponse, error) <span class="cov8" title="1">{
         logrus.Infof("Login attempt for user: %s", req.GetUsername())
         // Find user by username
-        user, err := s.repo.FindUserByUsername(req.GetUsername())
+        // limit :=
+        limitRatelimiter := s.config.Get("LIMIT_RATELIMITER")
+        limit, err := strconv.Atoi(limitRatelimiter)
+        if err != nil </span><span class="cov0" title="0">{
+                logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error getting limit ratelimiter: %v", err)
+                return &amp;auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, status.Error(codes.Internal, "internal server error")
+        }</span>
+
+        <span class="cov8" title="1">periodRateLimiter := s.config.Get("PERIOD_RATELIMITER")
+        // convert to time.Duration
+        period, err := time.ParseDuration(periodRateLimiter)
+        if err != nil </span><span class="cov0" title="0">{
+                logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error getting period ratelimiter: %v", err)
+                return &amp;auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, status.Error(codes.Internal, "internal server error")
+        }</span>
+
+        <span class="cov8" title="1">isAllowed, err := s.rateLimiter.IsAllowed(ctx, req.GetUsername(), limit, period)
+        if err != nil </span><span class="cov0" title="0">{
+                logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error checking rate limit: %v", err)
+                return &amp;auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, status.Error(codes.Internal, "internal server error")
+        }</span>
+
+        <span class="cov8" title="1">if !isAllowed </span><span class="cov0" title="0">{
+                logrus.Warn("Rate limit exceeded")
+                return &amp;auth.LoginResponse{Status: http.StatusTooManyRequests, Message: "Rate limit exceeded", AccessToken: "", RefreshToken: ""}, status.Error(codes.ResourceExhausted, "rate limit exceeded")
+        }</span>
+
+        <span class="cov8" title="1">user, err := s.repo.FindUserByUsername(req.GetUsername())
         if err != nil </span><span class="cov8" title="1">{
                 logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error finding user: %v", err)
-                return &amp;auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Invalid credentials", AccessToken: "", RefreshToken: ""}, nil
+                return &amp;auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Invalid credentials", AccessToken: "", RefreshToken: ""}, status.Error(codes.Internal, "internal server error")
         }</span>
 
         <span class="cov8" title="1">if user == nil </span><span class="cov8" title="1">{
                 logrus.Warn("User not found")
-                return &amp;auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Invalid credentials", AccessToken: "", RefreshToken: ""}, nil
+                return &amp;auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Invalid credentials", AccessToken: "", RefreshToken: ""}, status.Error(codes.Unauthenticated, "invalid credentials")
         }</span>
 
         // Compare password
         <span class="cov8" title="1">if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.GetPassword())); err != nil </span><span class="cov8" title="1">{
                 logrus.Warn("Password mismatch")
-                return &amp;auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Invalid credentials", AccessToken: "", RefreshToken: ""}, nil
+                return &amp;auth.LoginResponse{Status: http.StatusUnauthorized, Message: "Invalid credentials", AccessToken: "", RefreshToken: ""}, status.Error(codes.Unauthenticated, "invalid credentials")
         }</span>
 
         <span class="cov8" title="1">accessToken, refreshToken, err := s.token.CreateToken(user.ID)
         if err != nil </span><span class="cov8" title="1">{
                 logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error creating token: %v", err)
-                return &amp;auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, nil
+                return &amp;auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, status.Error(codes.Internal, "internal server error")
         }</span>
 
         <span class="cov8" title="1">err = s.repo.UpdateRefreshToken(user.ID, refreshToken)
         if err != nil </span><span class="cov0" title="0">{
                 logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error updating refresh token: %v", err)
-                return &amp;auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, nil
+                return &amp;auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, status.Error(codes.Internal, "internal server error")
         }</span>
 
-        <span class="cov8" title="1">s.notificationClient.SendNotification(context.Background(), &amp;pb.NotificationRequest{
+        // Example notification sending code
+        <span class="cov8" title="1">res, err := s.notificationClient.SendNotification(ctx, &amp;pb.NotificationRequest{
                 UserId:    fmt.Sprintf("%d", user.ID),
                 Message:   "Login successful",
                 Title:     "Someone logged in on your account",
                 Type:      "alert",
                 IpAddress: "123131",
                 UserAgent: "asdadada",
-                Timestamp: time.Now().String(),
+                Timestamp: utils.ConvertToDateTime(time.Now()),
         })
+
+        if err != nil </span><span class="cov0" title="0">{
+                logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error sending notification: %v", err)
+                return &amp;auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, status.Errorf(codes.Internal, "internal server error")
+        }</span>
+
+        <span class="cov8" title="1">if res.GetMessage() != "Success" </span><span class="cov0" title="0">{
+                logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error sending notification: %v", res.GetMessage())
+                return &amp;auth.LoginResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, status.Errorf(codes.Internal, "internal server error")
+        }</span>
+
+        <span class="cov8" title="1">logrus.Infof("Notification sent: %s", res.GetMessage())
+        logrus.Infof("User %s logged in successfully", req.GetUsername())
 
         return &amp;auth.LoginResponse{Status: http.StatusOK, Message: "Login successful", AccessToken: accessToken, RefreshToken: refreshToken}, nil</span>
 }
@@ -574,7 +676,7 @@ func (s *AuthServiceImpl) RegisterUser(ctx context.Context, req *auth.RegisterRe
 
         <span class="cov8" title="1">if checkUsername </span><span class="cov8" title="1">{
                 logrus.Warn("Username already exists")
-                return &amp;auth.RegisterResponse{Status: http.StatusConflict, Message: "Username already exists", AccessToken: "", RefreshToken: ""}, nil
+                return &amp;auth.RegisterResponse{Status: http.StatusConflict, Message: "Username already exists", AccessToken: "", RefreshToken: ""}, status.Errorf(codes.AlreadyExists, "username already exists")
         }</span>
 
         <span class="cov8" title="1">checkEmail, err := s.repo.CheckUserByEmailRegister(req.GetEmail())
@@ -585,20 +687,21 @@ func (s *AuthServiceImpl) RegisterUser(ctx context.Context, req *auth.RegisterRe
 
         <span class="cov8" title="1">if checkEmail </span><span class="cov8" title="1">{
                 logrus.Warn("Email already exists")
-                return &amp;auth.RegisterResponse{Status: http.StatusConflict, Message: "Email already exists", AccessToken: "", RefreshToken: ""}, nil
+                return &amp;auth.RegisterResponse{Status: http.StatusConflict, Message: "Email already exists", AccessToken: "", RefreshToken: ""}, status.Error(codes.AlreadyExists, "email already exists")
         }</span>
 
         <span class="cov8" title="1">hashedPassword, err := s.hasher.Generate([]byte(req.GetPassword()), bcrypt.DefaultCost)
         if err != nil </span><span class="cov8" title="1">{
                 logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error hashing password: %v", err)
-                return nil, fmt.Errorf("internal server error") // Early return on error
+                return nil, fmt.Errorf("internal server error %v", err)
         }</span>
 
         // covert req.GetDob() to time.Time
-        <span class="cov8" title="1">dob, err := time.Parse("2006-01-02", req.GetDob())
+        <span class="cov8" title="1">dobStr := fmt.Sprintf("%d-%02d-%02d", req.GetDob().GetYear(), req.GetDob().GetMonth(), req.GetDob().GetDay())
+        dob, err := time.Parse("2006-01-02", dobStr)
         if err != nil </span><span class="cov8" title="1">{
                 logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error parsing dob: %v", err)
-                return nil, fmt.Errorf("internal server error")
+                return nil, fmt.Errorf("internal server error %v", err)
         }</span>
 
         // Create user
@@ -637,6 +740,26 @@ func (s *AuthServiceImpl) RegisterUser(ctx context.Context, req *auth.RegisterRe
                 return nil, fmt.Errorf("internal server error")
         }</span>
 
+        <span class="cov8" title="1">resNotif, err := s.notificationClient.SendNotification(ctx, &amp;pb.NotificationRequest{
+                UserId:    fmt.Sprintf("%d", userId),
+                Message:   "Registration successful",
+                Title:     "Welcome to the platform",
+                Type:      "alert",
+                IpAddress: "123131",
+                UserAgent: "asdadada",
+                Timestamp: utils.ConvertToDateTime(time.Now()),
+        })
+
+        if err != nil </span><span class="cov0" title="0">{
+                logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error sending notification: %v", err)
+                return &amp;auth.RegisterResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, status.Errorf(codes.Internal, "internal server error")
+        }</span>
+
+        <span class="cov8" title="1">if resNotif.GetMessage() != "Success" </span><span class="cov0" title="0">{
+                logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error sending notification: %v", resNotif.GetMessage())
+                return &amp;auth.RegisterResponse{Status: http.StatusInternalServerError, Message: "Internal server error", AccessToken: "", RefreshToken: ""}, status.Errorf(codes.Internal, "internal server error")
+        }</span>
+
         <span class="cov8" title="1">logrus.WithFields(logrus.Fields{"request": req}).Infof("User %s registered successfully", req.GetUsername())
 
         return &amp;auth.RegisterResponse{Status: http.StatusOK, Message: "Registration successful", AccessToken: accessToken, RefreshToken: refreshToken}, nil</span>
@@ -651,12 +774,8 @@ func (s *AuthServiceImpl) RefreshToken(ctx context.Context, req *auth.RefreshTok
                 return nil, status.Errorf(codes.Internal, "internal server error")
         }</span>
 
-        <span class="cov8" title="1">fmt.Printf("%# v\n", userIdResult)
-
         // Add a call to `CheckRefreshToken` here if needed.
-        isTokenValid, err := s.repo.CheckRefreshToken(userIdResult.UserID, req.GetRefreshToken())
-        fmt.Printf("%# v\n", isTokenValid)
-        fmt.Printf("%# v\n", err)
+        <span class="cov8" title="1">isTokenValid, err := s.repo.CheckRefreshToken(userIdResult.UserID, req.GetRefreshToken())
         if err != nil || !isTokenValid </span><span class="cov0" title="0">{
                 logrus.WithFields(logrus.Fields{"request": req}).Errorf("Error validating refresh token: %v", err)
                 return nil, status.Errorf(codes.Internal, "refresh token invalid or expired")
@@ -677,9 +796,63 @@ func (s *AuthServiceImpl) RefreshToken(ctx context.Context, req *auth.RefreshTok
 }
 </pre>
 		
-		<pre class="file" id="file5" style="display: none">package utils
+		<pre class="file" id="file5" style="display: none">package service
 
-import "time"
+import (
+        "context"
+        "fmt"
+        "time"
+
+        "github.com/go-redis/redis/v8"
+)
+
+type RateLimiter struct {
+        client *redis.Client
+}
+
+func NewRateLimiter(client *redis.Client) *RateLimiter <span class="cov8" title="1">{
+        return &amp;RateLimiter{
+                client: client,
+        }
+}</span>
+
+// IsAllowed checks if the user has exceeded the rate limit based on their unique identifier
+func (rl *RateLimiter) IsAllowed(ctx context.Context, identifier string, limit int, period time.Duration) (bool, error) <span class="cov8" title="1">{
+        // Create a unique Redis key based on the identifier (e.g., username or IP)
+        key := fmt.Sprintf("login_attempts:%s", identifier)
+
+        // Increment the login attempt counter in Redis
+        count, err := rl.client.Incr(ctx, key).Result()
+        if err != nil </span><span class="cov0" title="0">{
+                return false, fmt.Errorf("error incrementing Redis counter: %v", err)
+        }</span>
+
+        // Set expiration if this is the first attempt
+        <span class="cov8" title="1">if count == 1 </span><span class="cov8" title="1">{
+                // Set the expiration time to the limit period (e.g., 1 minute)
+                err := rl.client.Expire(ctx, key, period).Err()
+                if err != nil </span><span class="cov0" title="0">{
+                        return false, fmt.Errorf("error setting expiration on Redis key: %v", err)
+                }</span>
+        }
+
+        // Check if the attempts exceed the limit
+        <span class="cov8" title="1">if count &gt; int64(limit) </span><span class="cov0" title="0">{
+                return false, nil // Block the attempt
+        }</span>
+
+        <span class="cov8" title="1">return true, nil</span> // Allow the attempt
+}
+</pre>
+		
+		<pre class="file" id="file6" style="display: none">package utils
+
+import (
+        "time"
+
+        "google.golang.org/genproto/googleapis/type/date"
+        "google.golang.org/genproto/googleapis/type/datetime"
+)
 
 func TimeMustParse(layout string) time.Time <span class="cov8" title="1">{
         t, err := time.Parse("2006-01-02", layout)
@@ -688,9 +861,42 @@ func TimeMustParse(layout string) time.Time <span class="cov8" title="1">{
         }
         <span class="cov8" title="1">return t</span>
 }
+
+func ConvertToDateTime(t time.Time) *datetime.DateTime <span class="cov0" title="0">{
+        return &amp;datetime.DateTime{
+                Year:    int32(t.Year()),
+                Month:   int32(t.Month()),
+                Day:     int32(t.Day()),
+                Hours:   int32(t.Hour()),
+                Minutes: int32(t.Minute()),
+                Seconds: int32(t.Second()),
+                Nanos:   int32(t.Nanosecond()),
+        }
+}</span>
+
+// Convert a string in "YYYY-MM-DD" format to *date.Date
+func ConvertToDate(dateStr string) (*date.Date, error) <span class="cov0" title="0">{
+        parsedTime, err := time.Parse("2006-01-02", dateStr) // "YYYY-MM-DD" format
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">return &amp;date.Date{
+                Year:  int32(parsedTime.Year()),
+                Month: int32(parsedTime.Month()),
+                Day:   int32(parsedTime.Day()),
+        }, nil</span>
+}
+
+func CheckAndCovertToDate(dateStr string) (string, error) <span class="cov0" title="0">{
+        parsedTime, err := time.Parse("2006-01-02", dateStr)
+        if err != nil </span><span class="cov0" title="0">{
+                return "", err
+        }</span>
+        <span class="cov0" title="0">return parsedTime.Format("2006-01-02"), nil</span>
+}
 </pre>
 		
-		<pre class="file" id="file6" style="display: none">package utils
+		<pre class="file" id="file7" style="display: none">package utils
 
 import "golang.org/x/crypto/bcrypt"
 
@@ -709,7 +915,7 @@ func (h BcryptHasher) Generate(password []byte, cost int) ([]byte, error) <span 
 }</span>
 </pre>
 		
-		<pre class="file" id="file7" style="display: none">package utils
+		<pre class="file" id="file8" style="display: none">package utils
 
 import (
         "fmt"
@@ -809,7 +1015,7 @@ func (t TokenHandler) CheckToken(tokenString string) (*CustomClaims, error) <spa
 }
 </pre>
 		
-		<pre class="file" id="file8" style="display: none">package mocks
+		<pre class="file" id="file9" style="display: none">package mocks
 
 import "github.com/stretchr/testify/mock"
 
@@ -825,7 +1031,7 @@ func (m *MockConfig) Get(key string) string <span class="cov8" title="1">{
 }</span>
 </pre>
 		
-		<pre class="file" id="file9" style="display: none">package mocks
+		<pre class="file" id="file10" style="display: none">package mocks
 
 import "github.com/stretchr/testify/mock"
 
@@ -840,7 +1046,7 @@ func (m *MockDatabase) Close() error <span class="cov0" title="0">{
 }</span>
 </pre>
 		
-		<pre class="file" id="file10" style="display: none">package mocks
+		<pre class="file" id="file11" style="display: none">package mocks
 
 import "github.com/stretchr/testify/mock"
 
@@ -859,7 +1065,7 @@ func (m *MockPasswordHasher) Generate(password []byte, cost int) ([]byte, error)
 }
 </pre>
 		
-		<pre class="file" id="file11" style="display: none">package mocks
+		<pre class="file" id="file12" style="display: none">package mocks
 
 import (
         "database/sql"
@@ -913,7 +1119,7 @@ func (m *MockRepository) FindUserByUsername(username string) (*model.GetUserPass
 }</span>
 </pre>
 		
-		<pre class="file" id="file12" style="display: none">package mocks
+		<pre class="file" id="file13" style="display: none">package mocks
 
 import (
         "github.com/fajaramaulana/auth-serivce-payment/internal/utils"

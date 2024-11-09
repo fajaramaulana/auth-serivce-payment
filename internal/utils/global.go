@@ -39,3 +39,11 @@ func ConvertToDate(dateStr string) (*date.Date, error) {
 		Day:   int32(parsedTime.Day()),
 	}, nil
 }
+
+func CheckAndCovertToDate(dateStr string) (string, error) {
+	parsedTime, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		return "", err
+	}
+	return parsedTime.Format("2006-01-02"), nil
+}

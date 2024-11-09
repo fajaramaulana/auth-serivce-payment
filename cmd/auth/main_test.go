@@ -8,12 +8,14 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock" // import this package for SQL mock support
+	"github.com/alicebob/miniredis/v2"
 	"github.com/fajaramaulana/auth-serivce-payment/internal/config"
 	"github.com/fajaramaulana/auth-serivce-payment/internal/repository"
 	"github.com/fajaramaulana/auth-serivce-payment/internal/service"
 	"github.com/fajaramaulana/auth-serivce-payment/mocks"
 	mockGrpc "github.com/fajaramaulana/shared-proto-payment/mocks"
 	"github.com/fajaramaulana/shared-proto-payment/proto/auth"
+	"github.com/go-redis/redis/v8"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -21,22 +23,32 @@ import (
 )
 
 func TestSetupServer(t *testing.T) {
+	// Set up mock config
 	mockConfig := new(mocks.MockConfig)
 	mockConfig.On("Get", "DB_HOST").Return("localhost")
 	mockConfig.On("Get", "NOTIFICATION_TARGET").Return("localhosttarget")
-	mockDB := new(sql.DB) // Create a new mock DB (or use a real connection if necessary)
 
+	// Start a miniredis server for Redis testing
+	mockRedis, err := miniredis.Run()
+	assert.NoError(t, err)
+	defer mockRedis.Close()
+	mockConfig.On("Get", "REDIS_HOST").Return(mockRedis.Addr())
+
+	// Mock database and listener
+	mockDB := new(sql.DB)
 	listenerFunc := func() (net.Listener, error) {
-		return net.Listen("tcp", ":50051")
+		return net.Listen("tcp", ":0")
 	}
-	// Test SetupServer
-	grpcServer, grpcClient, listener, err := SetupServer(mockConfig, mockDB, listenerFunc)
-	assert.NoError(t, err, "expected no error from SetupServer")
-	assert.NotNil(t, listener, "expected listener to be initialized")
-	assert.NotNil(t, grpcClient, "expected grpcClient to be initialized")
-	assert.NotNil(t, grpcServer, "expected grpcServer to be initialized")
 
-	// Close the server and listener at the end of the test
+	// Run SetupServer with the mock configuration
+	grpcServer, grpcClient, listener, redisClient, err := SetupServer(mockConfig, mockDB, listenerFunc)
+	assert.NoError(t, err)
+	assert.NotNil(t, grpcServer)
+	assert.NotNil(t, grpcClient)
+	assert.NotNil(t, listener)
+	assert.NotNil(t, redisClient)
+
+	// Clean up
 	grpcServer.Stop()
 	listener.Close()
 }
@@ -48,16 +60,23 @@ func TestSetupServer_ListenerError(t *testing.T) {
 
 	mockDB := new(sql.DB) // Substitute with a real mock DB if available
 
+	// Start a miniredis server for Redis testing
+	mockRedis, err := miniredis.Run()
+	assert.NoError(t, err)
+	defer mockRedis.Close()
+	mockConfig.On("Get", "REDIS_HOST").Return(mockRedis.Addr())
+
 	// Inject a listener function that returns an error
 	listenerFunc := func() (net.Listener, error) {
 		return nil, errors.New("failed to create listener")
 	}
 
-	grpcServer, grpcClient, listener, err := SetupServer(mockConfig, mockDB, listenerFunc)
+	grpcServer, grpcClient, listener, redisClient, err := SetupServer(mockConfig, mockDB, listenerFunc)
 	assert.Error(t, err, "expected error when listener creation fails")
 	assert.Nil(t, grpcServer, "expected grpcServer to be nil on error")
-	assert.Nil(t, grpcClient, "expected listener to be nil on error")
+	assert.Nil(t, grpcClient, "expected grpcClient to be nil on error")
 	assert.Nil(t, listener, "expected listener to be nil on error")
+	assert.Nil(t, redisClient, "expected grpcClient to be nil on error")
 }
 
 // TestMainFunction is a test function for the main function flow
@@ -72,7 +91,19 @@ func TestMainFunction(t *testing.T) {
 	mockDB := new(sql.DB) // Substitute with a real mock DB if available
 	authRepo := repository.NewUserRepository(mockDB, mockConfig)
 	mockNotifClient := new(mockGrpc.NotificationServiceClient)
-	authService := service.NewAuthService(authRepo, mockConfig, mockPassHash, mockToken, mockNotifClient)
+
+	mockRedis, err := miniredis.Run()
+	assert.NoError(t, err)
+	defer mockRedis.Close()
+	mockConfig.On("Get", "REDIS_HOST").Return(mockRedis.Addr())
+
+	// Create a Redis client based on the mock Redis server
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: mockRedis.Addr(),
+	})
+
+	rateLimiter := service.NewRateLimiter(redisClient)
+	authService := service.NewAuthService(authRepo, mockConfig, mockPassHash, mockToken, mockNotifClient, rateLimiter)
 
 	// Create the gRPC server and listener
 	grpcServer := grpc.NewServer()
@@ -107,6 +138,11 @@ func TestRun_Success(t *testing.T) {
 	mockConfig.On("Get", "DB_HOST").Return("localhost")
 	mockConfig.On("Get", "NOTIFICATION_TARGET").Return("localhosttarget")
 
+	mockRedis, err := miniredis.Run()
+	assert.NoError(t, err)
+	defer mockRedis.Close()
+	mockConfig.On("Get", "REDIS_HOST").Return(mockRedis.Addr())
+
 	// Run `run` function in a goroutine
 	done := make(chan error)
 	go func() {
@@ -132,7 +168,12 @@ func TestRun_DBConnectionFailure(t *testing.T) {
 	mockConfig.On("Get", "DB_HOST").Return("localhost")
 	mockConfig.On("Get", "NOTIFICATION_TARGET").Return("localhosttarget")
 
-	err := run(mockConfig, mockConnectDBFail, mockListenerSuccess)
+	mockRedis, err := miniredis.Run()
+	assert.NoError(t, err)
+	defer mockRedis.Close()
+	mockConfig.On("Get", "REDIS_HOST").Return(mockRedis.Addr())
+
+	err = run(mockConfig, mockConnectDBFail, mockListenerSuccess)
 	assert.Error(t, err, "expected error on database connection failure")
 	assert.EqualError(t, err, "failed to connect to database: failed to connect to database")
 }
@@ -142,7 +183,12 @@ func TestRun_ListenerFailure(t *testing.T) {
 	mockConfig.On("Get", "DB_HOST").Return("localhost")
 	mockConfig.On("Get", "NOTIFICATION_TARGET").Return("localhosttarget")
 
-	err := run(mockConfig, mockConnectDBSuccess, mockListenerFail)
+	mockRedis, err := miniredis.Run()
+	assert.NoError(t, err)
+	defer mockRedis.Close()
+	mockConfig.On("Get", "REDIS_HOST").Return(mockRedis.Addr())
+
+	err = run(mockConfig, mockConnectDBSuccess, mockListenerFail)
 	assert.Error(t, err, "expected error on listener creation failure")
 	assert.EqualError(t, err, "failed to set up server: failed to create listener")
 }
@@ -151,6 +197,11 @@ func TestRun_DBclose(t *testing.T) {
 	mockConfig := new(mocks.MockConfig)
 	mockConfig.On("Get", "DB_HOST").Return("localhost")
 	mockConfig.On("Get", "NOTIFICATION_TARGET").Return("localhosttarget")
+
+	mockRedis, err := miniredis.Run()
+	assert.NoError(t, err)
+	defer mockRedis.Close()
+	mockConfig.On("Get", "REDIS_HOST").Return(mockRedis.Addr())
 
 	done := make(chan error)
 	go func() {
@@ -175,7 +226,12 @@ func TestRun_ListenerCreationFailure(t *testing.T) {
 	mockConfig := new(mocks.MockConfig)
 	mockConfig.On("Get", mock.Anything).Return("localhost")
 
-	err := run(mockConfig, mockConnectDBSuccess, mockListenerFailure)
+	mockRedis, err := miniredis.Run()
+	assert.NoError(t, err)
+	defer mockRedis.Close()
+	mockConfig.On("Get", "REDIS_HOST").Return(mockRedis.Addr())
+
+	err = run(mockConfig, mockConnectDBSuccess, mockListenerFailure)
 	assert.Error(t, err, "expected error on listener creation failure")
 	assert.Contains(t, err.Error(), "failed to set up server")
 }
